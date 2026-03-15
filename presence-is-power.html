@@ -1,0 +1,1544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Presence is Power</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1208;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  font-family: 'Press Start 2P', monospace;
+  color: #e8d5a3;
+  overflow-x: hidden;
+}
+#hud {
+  width: 640px;
+  max-width: 100vw;
+  background: #2a1e0a;
+  border: 2px solid #6b4e1f;
+  border-bottom: none;
+  padding: 8px 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.hud-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 120px;
+}
+.hud-label {
+  font-size: 5px;
+  color: #a88a4a;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.hud-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.hud-bar-bg {
+  flex: 1;
+  height: 6px;
+  background: #3a2a0e;
+  border: 1px solid #5a3e1a;
+  position: relative;
+}
+.hud-bar-fill {
+  height: 100%;
+  transition: width 0.3s;
+}
+.hud-val {
+  font-size: 5px;
+  color: #e8d5a3;
+  min-width: 24px;
+  text-align: right;
+}
+.hud-day {
+  font-size: 6px;
+  color: #f0c840;
+  white-space: nowrap;
+}
+#canvas-wrap {
+  position: relative;
+  width: 640px;
+  max-width: 100vw;
+}
+#gameCanvas {
+  display: block;
+  width: 640px;
+  max-width: 100vw;
+  height: 640px;
+  border: 2px solid #6b4e1f;
+  image-rendering: pixelated;
+}
+#dialogue-box {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  background: rgba(26,18,8,0.97);
+  border: 2px solid #6b4e1f;
+  border-bottom: none;
+  padding: 12px;
+  display: none;
+  z-index: 20;
+}
+#dialogue-name {
+  font-size: 7px;
+  color: #f0c840;
+  margin-bottom: 6px;
+}
+#dialogue-text {
+  font-size: 6px;
+  line-height: 1.8;
+  color: #e8d5a3;
+  margin-bottom: 10px;
+}
+#dialogue-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.dlg-btn {
+  background: #3a2a0e;
+  border: 1px solid #8b6a2a;
+  color: #e8d5a3;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 5px;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.dlg-btn:hover { background: #5a3e1a; }
+#popup-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+  flex-direction: column;
+  gap: 10px;
+}
+#popup-box {
+  background: #2a1e0a;
+  border: 3px solid #8b6a2a;
+  padding: 20px 24px;
+  max-width: 400px;
+  text-align: center;
+}
+#popup-title {
+  font-size: 9px;
+  color: #f0c840;
+  margin-bottom: 12px;
+}
+#popup-body {
+  font-size: 6px;
+  line-height: 2;
+  color: #e8d5a3;
+}
+#popup-btn {
+  margin-top: 14px;
+  background: #5a3e1a;
+  border: 2px solid #8b6a2a;
+  color: #f0c840;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  padding: 8px 18px;
+  cursor: pointer;
+}
+#start-screen {
+  position: absolute;
+  inset: 0;
+  background: rgba(10,8,3,0.94);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+}
+#start-title {
+  font-size: 14px;
+  color: #f0c840;
+  text-align: center;
+  text-shadow: 2px 2px 0 #3a2200;
+  line-height: 1.6;
+}
+#start-sub {
+  font-size: 7px;
+  color: #c8a855;
+  text-align: center;
+}
+#start-desc {
+  font-size: 5.5px;
+  color: #a8885a;
+  text-align: center;
+  max-width: 380px;
+  line-height: 2;
+}
+#start-btn {
+  background: #5a3e1a;
+  border: 3px solid #f0c840;
+  color: #f0c840;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  padding: 12px 30px;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: background 0.2s;
+}
+#start-btn:hover { background: #8b6a2a; }
+#gameover-screen {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.92);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+}
+#gameover-title {
+  font-size: 11px;
+  color: #c03020;
+  text-align: center;
+}
+#gameover-reason {
+  font-size: 7px;
+  color: #e8d5a3;
+  text-align: center;
+  max-width: 360px;
+  line-height: 2;
+}
+#gameover-btn {
+  background: #3a1010;
+  border: 2px solid #c03020;
+  color: #e8d5a3;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  padding: 10px 20px;
+  cursor: pointer;
+}
+/* Touch controls */
+#touch-controls {
+  width: 640px;
+  max-width: 100vw;
+  display: none;
+  background: #1a1208;
+  padding: 12px;
+  justify-content: space-between;
+  align-items: center;
+  border: 2px solid #6b4e1f;
+  border-top: none;
+}
+#dpad {
+  display: grid;
+  grid-template-columns: 40px 40px 40px;
+  grid-template-rows: 40px 40px 40px;
+  gap: 2px;
+}
+.dpad-btn {
+  background: #3a2a0e;
+  border: 2px solid #6b4e1f;
+  color: #e8d5a3;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+.dpad-btn:active { background: #5a3e1a; }
+.dpad-center { grid-column: 2; grid-row: 2; background: #2a1e0a; }
+#interact-btn {
+  background: #3a2a0e;
+  border: 3px solid #8b6a2a;
+  color: #f0c840;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  width: 70px;
+  height: 70px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+#interact-btn:active { background: #5a3e1a; }
+@media (max-width: 960px) {
+  #touch-controls { display: flex; }
+  #hud, #gameCanvas, #canvas-wrap, #touch-controls { width: 100vw; }
+  #gameCanvas { height: 100vw; }
+}
+</style>
+</head>
+<body>
+<div id="hud">
+  <div class="hud-item">
+    <div class="hud-label">Day / Season</div>
+    <div class="hud-day" id="hud-day">Day 1 — Spring</div>
+  </div>
+  <div class="hud-item">
+    <div class="hud-label">Money</div>
+    <div class="hud-bar-wrap">
+      <div class="hud-bar-bg"><div class="hud-bar-fill" id="bar-money" style="background:#f0c840;width:30%"></div></div>
+      <div class="hud-val" id="val-money">30</div>
+    </div>
+  </div>
+  <div class="hud-item">
+    <div class="hud-label">Peasant Trust</div>
+    <div class="hud-bar-wrap">
+      <div class="hud-bar-bg"><div class="hud-bar-fill" id="bar-trust" style="background:#50c878;width:70%"></div></div>
+      <div class="hud-val" id="val-trust">70</div>
+    </div>
+  </div>
+  <div class="hud-item">
+    <div class="hud-label">Estate Output</div>
+    <div class="hud-bar-wrap">
+      <div class="hud-bar-bg"><div class="hud-bar-fill" id="bar-estate" style="background:#c87840;width:60%"></div></div>
+      <div class="hud-val" id="val-estate">60</div>
+    </div>
+  </div>
+</div>
+<div id="canvas-wrap">
+  <canvas id="gameCanvas" width="640" height="640"></canvas>
+  <div id="dialogue-box">
+    <div id="dialogue-name"></div>
+    <div id="dialogue-text"></div>
+    <div id="dialogue-buttons"></div>
+  </div>
+  <div id="popup-overlay">
+    <div id="popup-box">
+      <div id="popup-title"></div>
+      <div id="popup-body"></div>
+      <button id="popup-btn" onclick="closePopup()">CONTINUE</button>
+    </div>
+  </div>
+  <div id="start-screen">
+    <div id="start-title">PRESENCE<br>IS POWER</div>
+    <div id="start-sub">A game about what happens when you leave.</div>
+    <div id="start-desc">You are a minor lord in 17th-century France. Your fief is small but prosperous. Your people know your face. For now, there is nowhere else to be.</div>
+    <button id="start-btn" onclick="startGame()">BEGIN</button>
+  </div>
+  <div id="gameover-screen">
+    <div id="gameover-title">YOUR FIEF IS LOST</div>
+    <div id="gameover-reason"></div>
+    <button id="gameover-btn" onclick="resetGame()">TRY AGAIN</button>
+  </div>
+</div>
+<div id="touch-controls">
+  <div id="dpad">
+    <div></div>
+    <div class="dpad-btn" id="btn-up">▲</div>
+    <div></div>
+    <div class="dpad-btn" id="btn-left">◀</div>
+    <div class="dpad-center"></div>
+    <div class="dpad-btn" id="btn-right">▶</div>
+    <div></div>
+    <div class="dpad-btn" id="btn-down">▼</div>
+    <div></div>
+  </div>
+  <button id="interact-btn">TALK /<br>ACT</button>
+</div>
+
+<script>
+// ============================================================
+// TILE CONSTANTS
+// ============================================================
+const T = {
+  WATER:0, GRASS:1, DIRT:2, STONE_FLOOR:3, STONE_WALL:4,
+  CROP_SPRING:5, CROP_SUMMER:6, CROP_AUTUMN:7, CROP_WINTER:8,
+  TREE_DENSE:9, TREE_ORCHARD:10, ROAD:11, HEDGE:12,
+  MANOR_FLOOR:13, DOOR:14, CHURCH_FLOOR:15,
+  BLACKSMITH_FLOOR:16, COTTAGE_FLOOR:17, THATCH_WALL:18,
+  BENCH:19, WELL:20, FORGE:21, SIGN:22, CROSS:23,
+  GATE:24, BATTLEMENT:25, PATH:26, CROP_PATH:27,
+  WATER_ANIM:28, BRIDGE:29
+};
+
+const MAP_W = 30, MAP_H = 40;
+const TILE = 32;
+const VP = 20; // viewport tiles
+const CANVAS_SIZE = 640;
+
+// ============================================================
+// MAP DEFINITION
+// ============================================================
+// Build the map as a flat array
+let mapData = new Array(MAP_W * MAP_H).fill(T.GRASS);
+
+function setTile(x, y, t) {
+  if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) return;
+  mapData[y * MAP_W + x] = t;
+}
+function getTile(x, y) {
+  if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) return T.WATER;
+  return mapData[y * MAP_W + x];
+}
+
+function buildMap() {
+  // Water borders
+  for (let x = 0; x < MAP_W; x++) {
+    setTile(x, 0, T.WATER_ANIM);
+    setTile(x, 1, T.WATER_ANIM);
+    setTile(x, MAP_H-1, T.WATER_ANIM);
+    setTile(x, MAP_H-2, T.WATER_ANIM);
+  }
+  for (let y = 0; y < MAP_H; y++) {
+    setTile(0, y, T.WATER_ANIM);
+    setTile(1, y, T.WATER_ANIM);
+    setTile(MAP_W-1, y, T.WATER_ANIM);
+    setTile(MAP_W-2, y, T.WATER_ANIM);
+  }
+
+  // ---- CASTLE (top center, rows 2-10) ----
+  // Outer walls
+  for (let x = 8; x <= 21; x++) {
+    setTile(x, 2, T.BATTLEMENT);
+    setTile(x, 10, T.STONE_WALL);
+  }
+  for (let y = 2; y <= 10; y++) {
+    setTile(8, y, T.STONE_WALL);
+    setTile(21, y, T.STONE_WALL);
+  }
+  // Interior manor floor
+  for (let x = 9; x <= 20; x++)
+    for (let y = 3; y <= 9; y++)
+      setTile(x, y, T.MANOR_FLOOR);
+  // Gate (bottom center of castle)
+  setTile(14, 10, T.GATE);
+  setTile(15, 10, T.GATE);
+  // Throne area
+  setTile(14, 4, T.BENCH);
+  setTile(15, 4, T.BENCH);
+  // Corner towers (implied by thicker walls)
+  setTile(8, 2, T.BATTLEMENT); setTile(21, 2, T.BATTLEMENT);
+  setTile(8, 10, T.BATTLEMENT); setTile(21, 10, T.BATTLEMENT);
+
+  // ---- ROAD from castle gate south ----
+  for (let y = 10; y <= 37; y++) {
+    setTile(14, y, T.ROAD);
+    setTile(15, y, T.ROAD);
+  }
+
+  // ---- VILLAGE (rows 11-20) ----
+  // Dirt road through village (horizontal)
+  for (let x = 3; x <= 26; x++) setTile(x, 16, T.ROAD);
+
+  // Cottages - left cluster
+  const cottages = [
+    [4,12],[5,12],[4,13],[5,13],   // cottage 1
+    [4,17],[5,17],[4,18],[5,18],   // cottage 2
+    [7,12],[8,12],[7,13],[8,13],   // cottage 3
+    [7,17],[8,17],[7,18],[8,18],   // cottage 4
+    [10,12],[11,12],[10,13],[11,13],// cottage 5
+  ];
+  for (let [cx,cy] of cottages) setTile(cx, cy, T.COTTAGE_FLOOR);
+  // Thatch walls around cottages
+  for (let set of [[4,12,5,14],[4,17,5,19],[7,12,8,14],[7,17,8,19],[10,12,11,14]]) {
+    let [x1,y1,x2,y2] = set;
+    for (let x = x1; x <= x2; x++) { setTile(x,y1,T.THATCH_WALL); setTile(x,y2,T.THATCH_WALL); }
+    for (let y = y1; y <= y2; y++) { setTile(x1,y,T.THATCH_WALL); setTile(x2,y,T.THATCH_WALL); }
+    // floors
+    for (let x = x1+1; x < x2; x++) for (let y = y1+1; y < y2; y++) setTile(x,y,T.COTTAGE_FLOOR);
+    // door
+    setTile(Math.floor((x1+x2)/2), y2, T.DOOR);
+  }
+
+  // Cottages right cluster
+  const cottages2 = [[17,12,19,14],[17,17,19,19],[21,12,23,14],[21,17,23,19]];
+  for (let [x1,y1,x2,y2] of cottages2) {
+    for (let x = x1; x <= x2; x++) { setTile(x,y1,T.THATCH_WALL); setTile(x,y2,T.THATCH_WALL); }
+    for (let y = y1; y <= y2; y++) { setTile(x1,y,T.THATCH_WALL); setTile(x2,y,T.THATCH_WALL); }
+    for (let x = x1+1; x < x2; x++) for (let y = y1+1; y < y2; y++) setTile(x,y,T.COTTAGE_FLOOR);
+    setTile(Math.floor((x1+x2)/2), y2, T.DOOR);
+  }
+
+  // Village well/bench area (center)
+  setTile(13, 16, T.WELL);
+  setTile(16, 16, T.BENCH);
+
+  // Church (right side, rows 12-15)
+  for (let x = 24; x <= 27; x++) {
+    setTile(x, 11, T.STONE_WALL);
+    setTile(x, 15, T.STONE_WALL);
+    for (let y = 12; y <= 14; y++) setTile(x, y, T.CHURCH_FLOOR);
+  }
+  for (let y = 11; y <= 15; y++) {
+    setTile(24, y, T.STONE_WALL);
+    setTile(27, y, T.STONE_WALL);
+  }
+  for (let x = 25; x <= 26; x++) for (let y = 12; y <= 14; y++) setTile(x, y, T.CHURCH_FLOOR);
+  setTile(25, 15, T.DOOR); setTile(26, 15, T.DOOR);
+  setTile(25, 11, T.CROSS); setTile(26, 11, T.CROSS);
+
+  // Blacksmith (rows 19-21, right)
+  for (let x = 23; x <= 26; x++) {
+    setTile(x, 19, T.STONE_WALL);
+    setTile(x, 21, T.STONE_WALL);
+  }
+  for (let y = 19; y <= 21; y++) { setTile(23,y,T.STONE_WALL); setTile(26,y,T.STONE_WALL); }
+  for (let x = 24; x <= 25; x++) setTile(x, 20, T.BLACKSMITH_FLOOR);
+  setTile(24, 21, T.DOOR);
+  setTile(25, 20, T.FORGE);
+
+  // ---- FARM FIELDS (rows 21-31) ----
+  for (let y = 22; y <= 30; y++) {
+    for (let x = 3; x <= 27; x++) {
+      if (x === 14 || x === 15) { setTile(x, y, T.ROAD); continue; }
+      if ((y % 3) === 1) { setTile(x, y, T.CROP_PATH); continue; }
+      setTile(x, y, T.CROP_SPRING); // updated each season
+    }
+  }
+  // Dirt paths between field rows
+  for (let x = 3; x <= 27; x++) {
+    setTile(x, 22, T.PATH);
+    setTile(x, 25, T.PATH);
+    setTile(x, 28, T.PATH);
+    setTile(x, 31, T.PATH);
+  }
+
+  // ---- ORCHARD (left side, rows 21-31) ----
+  for (let y = 22; y <= 30; y++)
+    for (let x = 3; x <= 7; x++)
+      setTile(x, y, T.TREE_ORCHARD);
+  // Road past orchard
+  for (let y = 22; y <= 30; y++) setTile(8, y, T.PATH);
+
+  // ---- FOREST (bottom, rows 32-37) ----
+  for (let y = 32; y <= 37; y++)
+    for (let x = 3; x <= 26; x++)
+      setTile(x, y, T.TREE_DENSE);
+  // Forest path
+  for (let y = 32; y <= 37; y++) { setTile(14,y,T.PATH); setTile(15,y,T.PATH); }
+
+  // Bridge over water
+  setTile(14, 38, T.BRIDGE); setTile(15, 38, T.BRIDGE);
+
+  // ---- ROAD SIGN (south edge) ----
+  setTile(14, 36, T.SIGN); setTile(15, 36, T.SIGN);
+}
+
+buildMap();
+
+// ============================================================
+// TILE COLORS
+// ============================================================
+function getTileColor(t, animFrame, season) {
+  const cropColors = {
+    0: '#5a8f3c', // spring
+    1: '#2d7a1e', // summer
+    2: '#c8901a', // autumn
+    3: '#6b4e1f'  // winter
+  };
+  switch(t) {
+    case T.WATER_ANIM: return animFrame%2===0?'#3a6ea0':'#2e5a8a';
+    case T.GRASS: return '#4a7a2a';
+    case T.DIRT: return '#8b6040';
+    case T.STONE_FLOOR: return '#8a7a6a';
+    case T.STONE_WALL: return '#6a5a4a';
+    case T.CROP_SPRING: case T.CROP_SUMMER: case T.CROP_AUTUMN: case T.CROP_WINTER:
+      return cropColors[season] || '#5a8f3c';
+    case T.TREE_DENSE: return '#1a4a1a';
+    case T.TREE_ORCHARD: return '#2a5a1a';
+    case T.ROAD: return '#7a5a3a';
+    case T.HEDGE: return '#2a5a1a';
+    case T.MANOR_FLOOR: return '#a08060';
+    case T.DOOR: return '#8b4513';
+    case T.CHURCH_FLOOR: return '#c0b09a';
+    case T.BLACKSMITH_FLOOR: return '#3a3028';
+    case T.COTTAGE_FLOOR: return '#b09070';
+    case T.THATCH_WALL: return '#8b6a3a';
+    case T.BENCH: return '#6b4a1f';
+    case T.WELL: return '#5a4a3a';
+    case T.FORGE: return '#c84010';
+    case T.SIGN: return '#8b5a1a';
+    case T.CROSS: return '#8a7a6a';
+    case T.GATE: return '#5a4030';
+    case T.BATTLEMENT: return '#5a5050';
+    case T.PATH: return '#8a6a4a';
+    case T.CROP_PATH: return '#8a6a4a';
+    case T.BRIDGE: return '#7a6040';
+    default: return '#4a7a2a';
+  }
+}
+
+function isSolid(t) {
+  return [T.WATER_ANIM, T.STONE_WALL, T.THATCH_WALL, T.TREE_DENSE, T.TREE_ORCHARD,
+          T.HEDGE, T.BATTLEMENT, T.WATER].includes(t);
+}
+
+// ============================================================
+// GAME STATE
+// ============================================================
+let state = {
+  day: 1,
+  season: 0, // 0=Spring,1=Summer,2=Autumn,3=Winter
+  money: 30,
+  trust: 70,
+  estate: 60,
+  brokedays: 0,
+  npcsSpokenToday: new Set(),
+  dayTimer: 0,
+  DAY_DURATION: 18000, // ms
+  gameStarted: false,
+  gameOver: false,
+  activeRequests: [],
+  completedRequests: new Set(),
+  npcFlags: {},
+  fungusFlagSet: false,
+  tintAlpha: 0,
+  tintDir: 1,
+  popupQueue: [],
+  popupOpen: false,
+  lastTime: 0,
+  animFrame: 0,
+  animTimer: 0,
+};
+
+const SEASONS = ['Spring','Summer','Autumn','Winter'];
+
+// ============================================================
+// PLAYER
+// ============================================================
+let player = {
+  x: 14 * TILE + 8, y: 12 * TILE,
+  vx: 0, vy: 0,
+  facing: 2, // 0=up,1=right,2=down,3=left
+  moving: false,
+  walkFrame: 0,
+  walkTimer: 0,
+  SPEED: 3.2
+};
+
+// ============================================================
+// CAMERA
+// ============================================================
+let cam = { x: 0, y: 0 };
+function updateCamera() {
+  cam.x = player.x - CANVAS_SIZE/2 + TILE/2;
+  cam.y = player.y - CANVAS_SIZE/2 + TILE/2;
+  cam.x = Math.max(0, Math.min(cam.x, MAP_W*TILE - CANVAS_SIZE));
+  cam.y = Math.max(0, Math.min(cam.y, MAP_H*TILE - CANVAS_SIZE));
+}
+
+// ============================================================
+// NPC DEFINITIONS
+// ============================================================
+const NPC_COLORS = {
+  farmer: {body:'#5a7a30', hair:'#4a2a10'},
+  widow: {body:'#6a4a5a', hair:'#1a1010'},
+  priest: {body:'#8a8a8a', hair:'#aaaaaa'},
+  blacksmith: {body:'#3a3030', hair:'#2a1a10'},
+  orchardkeeper: {body:'#4a6a2a', hair:'#3a2a18'},
+  shepherd: {body:'#8a7050', hair:'#5a4020'},
+  elder: {body:'#7a6a50', hair:'#cccccc'},
+  youngmother: {body:'#8a6070', hair:'#5a2a2a'},
+};
+
+let npcs = [
+  {
+    id:'henri', name:'Henri', role:'Farmer', tx:18, ty:25,
+    color: NPC_COLORS.farmer,
+    firstMeet: true,
+    firstLine: "My lord! You walk the fields yourself? The men will talk about this for days.",
+    idleLines: [
+      "The wheat looks good this year, my lord.",
+      "Back again? The men say you're always watching.",
+      "God willing, the harvest will be strong."
+    ],
+    met: false, facingPlayer: false,
+    requestId: null,
+  },
+  {
+    id:'marie', name:'Marie', role:'Widow', tx:6, ty:18,
+    color: NPC_COLORS.widow,
+    firstLine: "My lord… it is rare to see you among us. My children will remember this.",
+    idleLines: [
+      "The children ask about you, my lord. They wonder if you dream of them.",
+      "It grows harder in winter, but we manage.",
+      "Your presence is a comfort, my lord."
+    ],
+    met: false, facingPlayer: false, requestId: null,
+  },
+  {
+    id:'gaston', name:'Père Gaston', role:'Priest', tx:25, ty:13,
+    color: NPC_COLORS.priest,
+    firstLine: "Blessings upon you, my lord. The Lord watches your stewardship closely.",
+    idleLines: [
+      "I pray for the health of this fief, my lord.",
+      "God rewards the shepherd who tends his flock.",
+      "Have you visited the sick lately, my lord? They ask for you."
+    ],
+    met: false, facingPlayer: false, requestId: null,
+  },
+  {
+    id:'jacques', name:'Jacques', role:'Blacksmith', tx:24, ty:20,
+    color: NPC_COLORS.blacksmith,
+    firstLine: "My lord. The forge is hot. What do you need?",
+    idleLines: [
+      "Steel doesn't lie, my lord. Neither does a man's work.",
+      "The plow blades need sharpening again. Just saying.",
+      "Good iron makes good crops. Remember that."
+    ],
+    met: false, facingPlayer: false, requestId: null,
+  },
+  {
+    id:'colette', name:'Colette', role:'Orchard Keeper', tx:5, ty:25,
+    color: NPC_COLORS.orchardkeeper,
+    firstLine: "The trees are patient, my lord. More patient than people.",
+    idleLines: [
+      "The blossoms this year are generous.",
+      "I talk to the trees. They listen better than some men.",
+      "Patience. The fruit comes when it will."
+    ],
+    met: false, facingPlayer: false, requestId: null,
+  },
+  {
+    id:'luc', name:'Luc', role:'Shepherd', tx:12, ty:33,
+    color: NPC_COLORS.shepherd,
+    firstLine: "Wolves again last night, my lord. Three sheep. I can show you the tracks.",
+    idleLines: [
+      "Something moves in the trees at night. I can feel it.",
+      "The flock is nervous. I'm nervous.",
+      "A good shepherd never sleeps easy, my lord."
+    ],
+    met: false, facingPlayer: false, requestId: null,
+  },
+  {
+    id:'thomas', name:'Old Thomas', role:'Village Elder', tx:13, ty:17,
+    color: NPC_COLORS.elder,
+    firstLine: "Your father walked these roads every morning. The people loved him for it. They'll love you too, if you stay.",
+    idleLines: [
+      "Back again, my lord? The children think you might be an angel.",
+      "Henri was saying just yesterday — it's good to have a lord who walks the dirt.",
+      "Your father would be proud, I think."
+    ],
+    met: false, facingPlayer: false, requestId: null,
+  },
+  {
+    id:'renee', name:'Renée', role:'Young Mother', tx:22, ty:18,
+    color: NPC_COLORS.youngmother,
+    firstLine: "My lord, please — my little one burns with fever. The apothecary wants coin I don't have.",
+    idleLines: [
+      "Little Pierre is better today. Thanks to you.",
+      "The children ask if they'll see you again.",
+      "God bless you, my lord. Truly."
+    ],
+    met: false, facingPlayer: false, requestId: null,
+  },
+];
+
+// ============================================================
+// REQUEST POOL
+// ============================================================
+const REQUEST_POOL = [
+  {
+    id:'sick_child', npcId:'renee', minDay:1,
+    getDialogue: () => "My lord, please — my little one burns with fever. The apothecary wants coin I don't have.",
+    options: [
+      { text:"Fund medicine", effect:()=>{ applyStats({trust:8, money:-5}); return "You send coin for medicine. The child's fever breaks by morning."; } },
+      { text:"Offer prayers only", effect:()=>{ applyStats({trust:-4}); return "You offer prayers. Renée weeps quietly as you leave."; } }
+    ]
+  },
+  {
+    id:'roof_repairs', npcId:'marie', minDay:1,
+    getDialogue: () => "The rain comes through, my lord. If we could pause the tax for a month, we'd have enough to fix the thatch.",
+    options: [
+      { text:"Grant tax relief", effect:()=>{ applyStats({trust:10, estate:-8}); return "You grant relief. The roof is fixed. The children sleep dry."; } },
+      { text:"Collect the tax", effect:()=>{ applyStats({trust:-10, estate:4}); return "You collect the tax. Marie stares at the ground as you go."; } }
+    ]
+  },
+  {
+    id:'better_tools', npcId:'jacques', minDay:2,
+    getDialogue: () => "This iron is old, my lord. Give me coin for good steel and I'll double the plow blades' life.",
+    options: [
+      { text:"Fund steel tools", effect:()=>{ applyStats({trust:6, estate:10, money:-8}); return "New steel arrives. The fields are tilled twice as fast."; } },
+      { text:"Not now", effect:()=>{ applyStats({trust:-4}); return "Jacques nods slowly. He expected this."; } }
+    ]
+  },
+  {
+    id:'orchard_fungus', npcId:'colette', minDay:3,
+    getDialogue: () => "See this rot, my lord? If we cut the sick trees now we save the rest. But we lose this season's yield.",
+    options: [
+      { text:"Cut the sick trees", effect:()=>{ applyStats({trust:2, estate:-8}); state.npcFlags.fungusHandled=true; return "You act decisively. Half the orchard is lost, but the rest is saved."; } },
+      { text:"Wait and hope", effect:()=>{ applyStats({estate:2, trust:-2}); state.npcFlags.fungusSpreading=true; return "You wait. Colette's eyes are sad. Time will tell."; } }
+    ]
+  },
+  {
+    id:'wolf_pack', npcId:'luc', minDay:2,
+    getDialogue: () => "Three sheep last night. If we don't hire hunters now, we'll lose the whole flock by winter.",
+    options: [
+      { text:"Hire hunters", effect:()=>{ applyStats({trust:5, money:-6}); return "Hunters are hired. The wolves are driven back."; } },
+      { text:"Do nothing", effect:()=>{ applyStats({trust:-8, estate:-3}); return "You do nothing. More sheep vanish. Luc stops meeting your eyes."; } }
+    ]
+  },
+  {
+    id:'church_roof', npcId:'gaston', minDay:3,
+    getDialogue: () => "The church roof is failing, my lord. The people see it and wonder if God has forgotten us.",
+    options: [
+      { text:"Repair the church", effect:()=>{ applyStats({trust:7, money:-8}); return "Masons are hired. The church stands proud again."; } },
+      { text:"Ignore it", effect:()=>{ applyStats({trust:-3}); return "You ignore it. Père Gaston bows in silence."; } }
+    ]
+  },
+  {
+    id:'henris_brother', npcId:'henri', minDay:4,
+    getDialogue: () => "My lord, my brother in Rouen is ill. Might I have leave to visit him? Just a week. The harvest can spare me.",
+    options: [
+      { text:"Grant leave", effect:()=>{ applyStats({trust:5, estate:-3}); state.npcFlags.henriLeave=true; return "You grant leave. Henri's eyes shine with gratitude."; } },
+      { text:"Deny leave", effect:()=>{ applyStats({trust:-6}); state.npcFlags.henriDenied=true; return "You deny him. Henri turns back to his work without a word."; } }
+    ]
+  },
+  {
+    id:'farmer_dispute', npcId:'thomas', minDay:4,
+    getDialogue: () => "Two families claim the same strip of land. They'll come to blows if you don't settle it.",
+    options: [
+      { text:"Judge fairly", effect:()=>{ applyStats({trust:4}); return "You hear both sides and rule. The families grumble but accept it."; } },
+      { text:"Ignore it", effect:()=>{ applyStats({trust:-5}); return "You ignore it. Shouting is heard from the village that evening."; } }
+    ]
+  },
+  {
+    id:'harvest_festival', npcId:'marie', minDay:5,
+    getDialogue: () => "The village elders want to hold a harvest dance. It costs, but the people need joy.",
+    options: [
+      { text:"Fund the festival", effect:()=>{ applyStats({trust:12, money:-10}); return "The village dances until dawn. Laughter echoes across the fields."; } },
+      { text:"Cancel it", effect:()=>{ applyStats({trust:-10}); return "You cancel it. The village is quiet. Too quiet."; } }
+    ]
+  },
+  {
+    id:'bridge_repair', npcId:'jacques', minDay:5,
+    getDialogue: () => "The river bridge creaks, my lord. Carts might fall.",
+    options: [
+      { text:"Rebuild the bridge", effect:()=>{ applyStats({money:-10, trust:5}); return "A new bridge is built. Trade flows more easily."; } },
+      { text:"Risk it", effect:()=>{ applyStats({trust:-2}); return "You risk it. Jacques shakes his head and walks away."; } }
+    ]
+  },
+  {
+    id:'hunting_rights', npcId:'luc', minDay:6,
+    getDialogue: () => "The villagers want to hunt rabbits in the forest. Feeds them, but depletes the game.",
+    options: [
+      { text:"Allow hunting", effect:()=>{ applyStats({trust:4, estate:1}); return "The villagers hunt freely. Families eat well."; } },
+      { text:"Ban hunting", effect:()=>{ applyStats({trust:-6, estate:2}); return "You ban it. Hungry faces line the road."; } }
+    ]
+  },
+  {
+    id:'witch_accusation', npcId:'gaston', minDay:6,
+    getDialogue: () => "An old herbalist is accused of souring the milk. The mob wants a trial.",
+    options: [
+      { text:"Protect the herbalist", effect:()=>{ applyStats({trust:-5}); state.npcFlags.herbalistSaved=true; return "You protect her. Some grumble, but the old woman weeps with relief."; } },
+      { text:"Allow the trial", effect:()=>{ applyStats({trust:3}); state.npcFlags.herbalistTried=true; return "The trial proceeds. Something darkens in the village."; } }
+    ]
+  },
+  {
+    id:'grain_rot', npcId:'colette', minDay:7,
+    getDialogue: () => "Rain got into the grain store. It's molding fast.",
+    options: [
+      { text:"Sell cheap to villagers", effect:()=>{ applyStats({estate:4, trust:-3}); return "The grain is sold quickly. Some is still bad, but less is wasted."; } },
+      { text:"Burn it all", effect:()=>{ applyStats({estate:-8, trust:2}); return "You burn the stores. The people trust your caution."; } }
+    ]
+  },
+  {
+    id:'henri_wedding', npcId:'henri', minDay:7,
+    getDialogue: () => "My lord, my daughter is to be married. Would you honor us with your presence at the feast?",
+    options: [
+      { text:"Attend the feast", effect:()=>{ applyStats({trust:8}); return "You sit at Henri's table. The whole village sees. Songs are sung in your name."; } },
+      { text:"Send a gift", effect:()=>{ applyStats({trust:3, money:-3}); return "You send a fine gift. Henri is touched, though he hoped you'd come."; } }
+    ]
+  },
+  {
+    id:'road_bandits', npcId:'thomas', minDay:8,
+    getDialogue: () => "Merchants are being robbed near the forest. Word will spread and trade will dry up.",
+    options: [
+      { text:"Send guards", effect:()=>{ applyStats({money:-5, trust:4}); return "Guards patrol the road. The bandits scatter. Merchants return."; } },
+      { text:"Pay a bribe", effect:()=>{ applyStats({money:-8, trust:-2}); return "You pay the bandits off. It works — for now."; } }
+    ]
+  },
+];
+
+// ============================================================
+// INPUT
+// ============================================================
+let keys = {};
+let touchDirs = {up:false,down:false,left:false,right:false};
+let interactPressed = false;
+
+document.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if ((e.key === ' ' || e.key === 'Enter') && state.gameStarted) {
+    interactPressed = true;
+  }
+});
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+function setupTouch(id, prop) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('touchstart', e => { e.preventDefault(); touchDirs[prop]=true; }, {passive:false});
+  el.addEventListener('touchend', e => { e.preventDefault(); touchDirs[prop]=false; }, {passive:false});
+  el.addEventListener('mousedown', e => { touchDirs[prop]=true; });
+  el.addEventListener('mouseup', e => { touchDirs[prop]=false; });
+}
+setupTouch('btn-up','up');
+setupTouch('btn-down','down');
+setupTouch('btn-left','left');
+setupTouch('btn-right','right');
+
+document.getElementById('interact-btn').addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (state.gameStarted) interactPressed = true;
+}, {passive:false});
+document.getElementById('interact-btn').addEventListener('click', () => {
+  if (state.gameStarted) interactPressed = true;
+});
+
+// ============================================================
+// DIALOGUE SYSTEM
+// ============================================================
+let dialogueOpen = false;
+let currentDialogueNpc = null;
+
+function openDialogue(npc, text, buttons) {
+  dialogueOpen = true;
+  currentDialogueNpc = npc;
+  const box = document.getElementById('dialogue-box');
+  document.getElementById('dialogue-name').textContent = npc.name + (npc.role?' ('+npc.role+')':'');
+  document.getElementById('dialogue-text').textContent = text;
+  const btnWrap = document.getElementById('dialogue-buttons');
+  btnWrap.innerHTML = '';
+  for (let btn of buttons) {
+    const b = document.createElement('button');
+    b.className = 'dlg-btn';
+    b.textContent = btn.text;
+    b.onclick = () => { btn.action(); };
+    btnWrap.appendChild(b);
+  }
+  box.style.display = 'block';
+}
+
+function closeDialogue() {
+  dialogueOpen = false;
+  currentDialogueNpc = null;
+  document.getElementById('dialogue-box').style.display = 'none';
+}
+
+function talkToNpc(npc) {
+  if (dialogueOpen) return;
+  state.npcsSpokenToday.add(npc.id);
+
+  // Check if NPC has an active request
+  const req = state.activeRequests.find(r => r.npcId === npc.id);
+  if (req) {
+    npc.requestId = req.id;
+    openDialogue(npc, req.getDialogue(), req.options.map(opt => ({
+      text: opt.text,
+      action: () => {
+        const result = opt.effect();
+        state.activeRequests = state.activeRequests.filter(r => r.id !== req.id);
+        state.completedRequests.add(req.id);
+        npc.requestId = null;
+        closeDialogue();
+        showPopup('Response', result, null);
+      }
+    })).concat([{text:'Never mind', action:closeDialogue}]));
+    return;
+  }
+
+  // Regular dialogue
+  let text;
+  if (!npc.met) {
+    npc.met = true;
+    text = npc.firstLine;
+  } else {
+    text = npc.idleLines[Math.floor(Math.random() * npc.idleLines.length)];
+  }
+  openDialogue(npc, text, [{text:'Farewell', action:closeDialogue}]);
+}
+
+// ============================================================
+// POPUP SYSTEM
+// ============================================================
+function showPopup(title, body, callback) {
+  state.popupQueue.push({title, body, callback});
+  if (!state.popupOpen) flushPopup();
+}
+function flushPopup() {
+  if (state.popupQueue.length === 0) { state.popupOpen = false; return; }
+  state.popupOpen = true;
+  const p = state.popupQueue.shift();
+  document.getElementById('popup-title').textContent = p.title;
+  document.getElementById('popup-body').textContent = p.body;
+  document.getElementById('popup-overlay').style.display = 'flex';
+  document.getElementById('popup-btn').onclick = () => {
+    document.getElementById('popup-overlay').style.display = 'none';
+    if (p.callback) p.callback();
+    flushPopup();
+  };
+}
+function closePopup() {
+  document.getElementById('popup-overlay').style.display = 'none';
+  flushPopup();
+}
+
+// ============================================================
+// STATS
+// ============================================================
+function applyStats(delta) {
+  if (delta.money)  state.money  = Math.max(0, state.money  + delta.money);
+  if (delta.trust)  state.trust  = Math.max(0, Math.min(100, state.trust  + delta.trust));
+  if (delta.estate) state.estate = Math.max(0, Math.min(100, state.estate + delta.estate));
+  updateHUD();
+}
+
+function updateHUD() {
+  document.getElementById('hud-day').textContent = 'Day '+state.day+' — '+SEASONS[state.season];
+  document.getElementById('val-money').textContent = state.money;
+  document.getElementById('val-trust').textContent = state.trust;
+  document.getElementById('val-estate').textContent = state.estate;
+  document.getElementById('bar-money').style.width  = Math.min(100, state.money) + '%';
+  document.getElementById('bar-trust').style.width  = state.trust + '%';
+  document.getElementById('bar-estate').style.width = state.estate + '%';
+}
+
+// ============================================================
+// DAY CYCLE
+// ============================================================
+function endDay() {
+  const prevDay = state.day;
+
+  // Income
+  const income = Math.floor(state.estate / 10);
+  state.money += income;
+
+  // Trust drift
+  const spoken = state.npcsSpokenToday.size;
+  let trustDelta = 0;
+  if (spoken === 0) { trustDelta = -1; }
+  else if (spoken >= 3) { trustDelta = 1; }
+  state.trust = Math.max(0, Math.min(100, state.trust + trustDelta));
+
+  // Estate seasonal change
+  let estateDelta = 0;
+  if (state.season === 1) estateDelta = 1;      // summer
+  else if (state.season === 3) estateDelta = -1; // winter
+  // Fungus spreading
+  if (state.npcFlags.fungusSpreading && !state.npcFlags.fungusHandled) {
+    estateDelta -= 2;
+  }
+  state.estate = Math.max(0, Math.min(100, state.estate + estateDelta));
+
+  // Advance day
+  state.day++;
+  state.season = Math.floor(((state.day - 1) / 7) % 4);
+  updateCropTiles();
+
+  // Generate new requests
+  generateRequests();
+
+  // Money broke check
+  if (state.money <= 0) state.brokedays++;
+  else state.brokedays = 0;
+
+  // Build popup text
+  let lines = [];
+  lines.push('DAY ' + prevDay + ' COMPLETE');
+  lines.push('');
+  lines.push('Income: +' + income + ' coins');
+  if (trustDelta !== 0) lines.push('Trust: ' + (trustDelta > 0 ? '+' : '') + trustDelta);
+  if (estateDelta !== 0) lines.push('Estate: ' + (estateDelta > 0 ? '+' : '') + estateDelta);
+  lines.push('');
+  lines.push('SEASON: ' + SEASONS[state.season]);
+  lines.push('NPCs spoken to: ' + spoken);
+
+  state.npcsSpokenToday = new Set();
+  updateHUD();
+
+  showPopup('END OF DAY', lines.join('\n'), () => {
+    checkGameOver();
+  });
+}
+
+function checkGameOver() {
+  if (state.trust <= 0) {
+    triggerGameOver("A rebellion consumes the fief. The people rose up against a lord they never knew.");
+  } else if (state.estate <= 0) {
+    triggerGameOver("Your treasury collapses. Without output, the fief crumbles to ruin.");
+  } else if (state.brokedays >= 3) {
+    triggerGameOver("You cannot feed your own household. Three days with no coin — your servants leave, your halls fall silent.");
+  }
+}
+
+function triggerGameOver(reason) {
+  state.gameOver = true;
+  document.getElementById('gameover-reason').textContent = reason;
+  document.getElementById('gameover-screen').style.display = 'flex';
+}
+
+function generateRequests() {
+  // Clear old request indicators
+  for (let npc of npcs) npc.requestId = null;
+
+  const eligible = REQUEST_POOL.filter(r =>
+    r.minDay <= state.day &&
+    !state.completedRequests.has(r.id) &&
+    !state.activeRequests.find(a => a.id === r.id)
+  );
+  // Pick 2-3 random
+  shuffle(eligible);
+  const count = 2 + (Math.random() < 0.33 ? 1 : 0);
+  const newReqs = eligible.slice(0, Math.min(count, eligible.length));
+  state.activeRequests = [...state.activeRequests, ...newReqs];
+
+  // Mark NPCs
+  for (let req of state.activeRequests) {
+    const npc = npcs.find(n => n.id === req.npcId);
+    if (npc) npc.requestId = req.id;
+  }
+}
+
+function shuffle(arr) {
+  for (let i = arr.length-1; i > 0; i--) {
+    const j = Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]] = [arr[j],arr[i]];
+  }
+}
+
+function updateCropTiles() {
+  for (let y = 0; y < MAP_H; y++) {
+    for (let x = 0; x < MAP_W; x++) {
+      const t = getTile(x, y);
+      if (t >= T.CROP_SPRING && t <= T.CROP_WINTER) {
+        setTile(x, y, T.CROP_SPRING + state.season);
+      }
+    }
+  }
+}
+
+// ============================================================
+// RENDERING
+// ============================================================
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+function drawTile(t, sx, sy, animFrame, season) {
+  const col = getTileColor(t, animFrame, season);
+  ctx.fillStyle = col;
+  ctx.fillRect(sx, sy, TILE, TILE);
+
+  // Details
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  if (t === T.STONE_WALL || t === T.THATCH_WALL || t === T.BATTLEMENT) {
+    // mortar lines
+    ctx.fillRect(sx, sy+10, TILE, 2);
+    ctx.fillRect(sx, sy+22, TILE, 2);
+    ctx.fillRect(sx+16, sy, 2, TILE);
+  }
+  if (t === T.WATER_ANIM) {
+    ctx.fillStyle = animFrame%2===0?'rgba(255,255,255,0.08)':'rgba(0,0,0,0.08)';
+    ctx.fillRect(sx+4, sy+12, 24, 3);
+    ctx.fillRect(sx+8, sy+22, 16, 3);
+  }
+  if (t === T.TREE_DENSE || t === T.TREE_ORCHARD) {
+    const lighter = t===T.TREE_ORCHARD?'#3a7a2a':'#2a5a2a';
+    ctx.fillStyle = lighter;
+    ctx.beginPath();
+    ctx.arc(sx+16, sy+16, 12, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#1a3a1a';
+    ctx.beginPath();
+    ctx.arc(sx+16, sy+14, 8, 0, Math.PI*2);
+    ctx.fill();
+  }
+  if (t === T.CROP_SPRING || t === T.CROP_SUMMER || t === T.CROP_AUTUMN || t === T.CROP_WINTER) {
+    const cols = [['#6aaf44','#4a8f24'],['#3a9a2a','#2a7a1a'],['#e0a820','#b88010'],['#7a5a30','#5a3a10']];
+    const [c1,c2] = cols[season]||cols[0];
+    for (let i = 0; i < 4; i++) {
+      ctx.fillStyle = i%2===0?c1:c2;
+      ctx.fillRect(sx+i*8, sy+8, 4, 18);
+    }
+  }
+  if (t === T.ROAD) {
+    ctx.fillStyle = 'rgba(0,0,0,0.08)';
+    ctx.fillRect(sx+2, sy+15, TILE-4, 2);
+  }
+  if (t === T.DOOR) {
+    ctx.fillStyle = '#5a2a0a';
+    ctx.fillRect(sx+8, sy+8, 16, 20);
+    ctx.fillStyle = '#f0c840';
+    ctx.fillRect(sx+20, sy+16, 4, 4);
+  }
+  if (t === T.GATE) {
+    ctx.fillStyle = '#3a2810';
+    ctx.fillRect(sx+4, sy+4, 24, 28);
+    ctx.fillStyle = '#8b6a2a';
+    ctx.fillRect(sx+14, sy+4, 4, 28);
+  }
+  if (t === T.CROSS) {
+    ctx.fillStyle = '#f0c840';
+    ctx.fillRect(sx+13, sy+4, 6, 20);
+    ctx.fillRect(sx+8, sy+10, 16, 6);
+  }
+  if (t === T.FORGE) {
+    ctx.fillStyle = '#ff6010';
+    ctx.beginPath();
+    ctx.arc(sx+16, sy+18, 10, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#ffb040';
+    ctx.beginPath();
+    ctx.arc(sx+16, sy+18, 5, 0, Math.PI*2);
+    ctx.fill();
+  }
+  if (t === T.WELL) {
+    ctx.fillStyle = '#5a4030';
+    ctx.beginPath();
+    ctx.arc(sx+16, sy+18, 10, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#2a6090';
+    ctx.beginPath();
+    ctx.arc(sx+16, sy+20, 7, 0, Math.PI*2);
+    ctx.fill();
+  }
+  if (t === T.BENCH) {
+    ctx.fillStyle = '#5a3a10';
+    ctx.fillRect(sx+4, sy+18, 24, 4);
+    ctx.fillRect(sx+6, sy+22, 4, 6);
+    ctx.fillRect(sx+22, sy+22, 4, 6);
+  }
+  if (t === T.SIGN) {
+    ctx.fillStyle = '#5a3a10';
+    ctx.fillRect(sx+14, sy+4, 4, 24);
+    ctx.fillStyle = '#8b6020';
+    ctx.fillRect(sx+6, sy+8, 20, 12);
+    ctx.fillStyle = '#e8d5a3';
+    ctx.fillRect(sx+10, sy+12, 12, 4);
+  }
+  if (t === T.BRIDGE) {
+    ctx.fillStyle = '#8a6a40';
+    for (let i = 0; i < 4; i++) {
+      ctx.fillRect(sx+i*8, sy+8, 6, 16);
+    }
+  }
+}
+
+function drawNpc(npc, sx, sy, animFrame) {
+  const col = npc.color;
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(sx+16, sy+28, 8, 3, 0, 0, Math.PI*2);
+  ctx.fill();
+  // Body
+  ctx.fillStyle = col.body;
+  ctx.fillRect(sx+10, sy+14, 12, 14);
+  // Head
+  ctx.fillStyle = '#e8c090';
+  ctx.fillRect(sx+11, sy+6, 10, 10);
+  // Hair
+  ctx.fillStyle = col.hair;
+  ctx.fillRect(sx+11, sy+6, 10, 4);
+  // Legs with walk animation
+  const legOff = (animFrame%2===0)?1:0;
+  ctx.fillStyle = col.body;
+  ctx.fillRect(sx+10, sy+28, 5, 4+legOff);
+  ctx.fillRect(sx+17, sy+28, 5, 4+(1-legOff));
+  // Face dot for eyes
+  ctx.fillStyle = '#3a2010';
+  ctx.fillRect(sx+13, sy+10, 2, 2);
+  ctx.fillRect(sx+17, sy+10, 2, 2);
+
+  // Role specific
+  if (npc.role === 'Priest') {
+    ctx.fillStyle = '#eeeeee';
+    ctx.fillRect(sx+13, sy+14, 6, 12); // white robe
+  }
+  if (npc.role === 'Blacksmith') {
+    ctx.fillStyle = '#1a1010';
+    ctx.fillRect(sx+10, sy+14, 12, 14); // dark apron over
+    ctx.fillStyle = '#5a4030';
+    ctx.fillRect(sx+12, sy+16, 8, 10);
+  }
+
+  // Request indicator (!)
+  if (npc.requestId) {
+    const bob = Math.sin(Date.now()/300)*2;
+    ctx.fillStyle = '#ff4040';
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('!', sx+16, sy - 2 + bob);
+    ctx.textAlign = 'left';
+  }
+}
+
+function drawPlayer(sx, sy, animFrame, moving) {
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(sx+16, sy+30, 9, 3, 0, 0, Math.PI*2);
+  ctx.fill();
+  // Cloak (noble blue)
+  ctx.fillStyle = '#2a4a8a';
+  ctx.fillRect(sx+8, sy+14, 16, 16);
+  // Body (noble tunic)
+  ctx.fillStyle = '#4a6aaa';
+  ctx.fillRect(sx+10, sy+14, 12, 14);
+  // Head
+  ctx.fillStyle = '#e8c090';
+  ctx.fillRect(sx+11, sy+5, 10, 11);
+  // Hat/hair
+  ctx.fillStyle = '#2a1a08';
+  ctx.fillRect(sx+10, sy+3, 12, 5);
+  ctx.fillRect(sx+9, sy+5, 14, 3);
+  // Eyes
+  ctx.fillStyle = '#1a1010';
+  ctx.fillRect(sx+13, sy+9, 2, 2);
+  ctx.fillRect(sx+17, sy+9, 2, 2);
+  // Legs
+  if (moving) {
+    const lf = animFrame % 4;
+    const leftOff  = lf<2 ? -2 : 2;
+    const rightOff = lf<2 ? 2 : -2;
+    ctx.fillStyle = '#1a2a5a';
+    ctx.fillRect(sx+10, sy+28, 5, 6+leftOff);
+    ctx.fillRect(sx+17, sy+28, 5, 6+rightOff);
+  } else {
+    ctx.fillStyle = '#1a2a5a';
+    ctx.fillRect(sx+10, sy+28, 5, 6);
+    ctx.fillRect(sx+17, sy+28, 5, 6);
+  }
+  // Sword/staff hint
+  ctx.fillStyle = '#c8a820';
+  ctx.fillRect(sx+22, sy+14, 3, 16);
+}
+
+function render(dt) {
+  ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+  const tileX0 = Math.floor(cam.x / TILE);
+  const tileY0 = Math.floor(cam.y / TILE);
+  const offX = -(cam.x % TILE);
+  const offY = -(cam.y % TILE);
+
+  // Draw tiles
+  for (let ty = 0; ty <= VP; ty++) {
+    for (let tx = 0; tx <= VP; tx++) {
+      const mapX = tileX0 + tx;
+      const mapY = tileY0 + ty;
+      const t = getTile(mapX, mapY);
+      const sx = offX + tx * TILE;
+      const sy = offY + ty * TILE;
+      drawTile(t, sx, sy, state.animFrame, state.season);
+    }
+  }
+
+  // Draw NPCs
+  for (let npc of npcs) {
+    const sx = npc.tx * TILE - cam.x;
+    const sy = npc.ty * TILE - cam.y;
+    if (sx > -TILE && sx < CANVAS_SIZE && sy > -TILE && sy < CANVAS_SIZE) {
+      drawNpc(npc, sx, sy, state.animFrame);
+      // Proximity indicator
+      const dx = npc.tx*TILE - player.x;
+      const dy = npc.ty*TILE - player.y;
+      const dist = Math.sqrt(dx*dx+dy*dy);
+      if (dist < TILE*2.5 && !npc.requestId) {
+        ctx.fillStyle = 'rgba(255,255,150,0.85)';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('▲', sx+16, sy-4);
+        ctx.textAlign = 'left';
+      }
+    }
+  }
+
+  // Draw player
+  const px = player.x - cam.x;
+  const py = player.y - cam.y;
+  drawPlayer(px, py, player.walkFrame, player.moving);
+
+  // Day/night tint
+  if (state.tintAlpha > 0) {
+    ctx.fillStyle = `rgba(10,5,30,${state.tintAlpha})`;
+    ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  }
+
+  // Day timer bar
+  const barPct = 1 - (state.dayTimer / state.DAY_DURATION);
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(0, 0, CANVAS_SIZE, 6);
+  ctx.fillStyle = barPct < 0.2 ? '#c03020' : '#f0c840';
+  ctx.fillRect(0, 0, CANVAS_SIZE * barPct, 6);
+}
+
+// ============================================================
+// UPDATE
+// ============================================================
+function update(dt) {
+  if (!state.gameStarted || state.gameOver || dialogueOpen || state.popupOpen) return;
+
+  // Movement
+  let dx = 0, dy = 0;
+  const spd = player.SPEED;
+  if (keys['ArrowUp']    || keys['w'] || keys['W'] || touchDirs.up)    dy -= spd;
+  if (keys['ArrowDown']  || keys['s'] || keys['S'] || touchDirs.down)  dy += spd;
+  if (keys['ArrowLeft']  || keys['a'] || keys['A'] || touchDirs.left)  dx -= spd;
+  if (keys['ArrowRight'] || keys['d'] || keys['D'] || touchDirs.right) dx += spd;
+
+  // Normalize diagonal
+  if (dx && dy) { dx *= 0.707; dy *= 0.707; }
+
+  player.moving = dx !== 0 || dy !== 0;
+  if (player.moving) {
+    if (dy < 0) player.facing = 0;
+    else if (dy > 0) player.facing = 2;
+    else if (dx < 0) player.facing = 3;
+    else player.facing = 1;
+
+    player.walkTimer += dt;
+    if (player.walkTimer > 150) { player.walkFrame++; player.walkTimer = 0; }
+  }
+
+  // Collision
+  const nx = player.x + dx;
+  const ny = player.y + dy;
+  // Check corners
+  const pts = [[nx+2,player.y+8],[nx+TILE-4,player.y+8],[nx+2,player.y+TILE-2],[nx+TILE-4,player.y+TILE-2]];
+  let canX = true;
+  for (let [px,py2] of pts) {
+    const tx2 = Math.floor(px/TILE), ty2 = Math.floor(py2/TILE);
+    if (isSolid(getTile(tx2,ty2))) { canX = false; break; }
+  }
+  const pts2 = [[player.x+2,ny+8],[player.x+TILE-4,ny+8],[player.x+2,ny+TILE-2],[player.x+TILE-4,ny+TILE-2]];
+  let canY = true;
+  for (let [px2,py2] of pts2) {
+    const tx2 = Math.floor(px2/TILE), ty2 = Math.floor(py2/TILE);
+    if (isSolid(getTile(tx2,ty2))) { canY = false; break; }
+  }
+  if (canX) player.x = nx;
+  if (canY) player.y = ny;
+  player.x = Math.max(2*TILE, Math.min((MAP_W-2)*TILE, player.x));
+  player.y = Math.max(2*TILE, Math.min((MAP_H-2)*TILE, player.y));
+
+  updateCamera();
+
+  // Day timer
+  state.dayTimer += dt;
+  // Tint: last 3 seconds darken
+  const timeLeft = state.DAY_DURATION - state.dayTimer;
+  if (timeLeft < 3000) {
+    state.tintAlpha = 0.35 * (1 - timeLeft/3000);
+  } else if (state.dayTimer < 1000) {
+    state.tintAlpha = 0.35 * (1 - state.dayTimer/1000);
+  } else {
+    state.tintAlpha = 0;
+  }
+
+  if (state.dayTimer >= state.DAY_DURATION) {
+    state.dayTimer = 0;
+    endDay();
+  }
+
+  // NPC facing
+  for (let npc of npcs) {
+    const dx2 = player.x - npc.tx*TILE;
+    const dy2 = player.y - npc.ty*TILE;
+    npc.facingPlayer = Math.sqrt(dx2*dx2+dy2*dy2) < TILE*2.5;
+  }
+
+  // Interact
+  if (interactPressed) {
+    interactPressed = false;
+    // Find nearest NPC within 2 tiles
+    let best = null, bestDist = TILE * 2.5;
+    for (let npc of npcs) {
+      const dx2 = player.x - npc.tx*TILE;
+      const dy2 = player.y - npc.ty*TILE;
+      const d = Math.sqrt(dx2*dx2+dy2*dy2);
+      if (d < bestDist) { bestDist = d; best = npc; }
+    }
+    if (best) {
+      talkToNpc(best);
+    } else {
+      // Check for sign
+      const px2 = Math.floor(player.x/TILE), py2 = Math.floor(player.y/TILE);
+      for (let [ox,oy] of [[0,0],[1,0],[0,1],[-1,0],[0,-1]]) {
+        if (getTile(px2+ox, py2+oy) === T.SIGN) {
+          openDialogue({name:'Road Sign', role:''}, "The road to Paris. You have no reason to go. Your people need you here.", [{text:'Turn back', action:closeDialogue}]);
+          break;
+        }
+      }
+    }
+  }
+
+  // Animate
+  state.animTimer += dt;
+  if (state.animTimer > 500) { state.animFrame++; state.animTimer = 0; }
+}
+
+// ============================================================
+// GAME LOOP
+// ============================================================
+function gameLoop(ts) {
+  const dt = Math.min(ts - (state.lastTime || ts), 100);
+  state.lastTime = ts;
+  if (state.gameStarted && !state.gameOver) {
+    update(dt);
+    render(dt);
+  } else if (!state.gameStarted) {
+    renderBackground();
+  }
+  requestAnimationFrame(gameLoop);
+}
+
+function renderBackground() {
+  ctx.fillStyle = '#2a1e0a';
+  ctx.fillRect(0,0,CANVAS_SIZE,CANVAS_SIZE);
+}
+
+// ============================================================
+// START / RESET
+// ============================================================
+function startGame() {
+  document.getElementById('start-screen').style.display = 'none';
+  state.gameStarted = true;
+  generateRequests();
+  updateHUD();
+  updateCamera();
+}
+
+function resetGame() {
+  document.getElementById('gameover-screen').style.display = 'none';
+  state.day=1; state.season=0; state.money=30; state.trust=70; state.estate=60;
+  state.brokedays=0; state.npcsSpokenToday=new Set(); state.dayTimer=0;
+  state.activeRequests=[]; state.completedRequests=new Set(); state.npcFlags={};
+  state.tintAlpha=0; state.popupQueue=[]; state.popupOpen=false; state.gameOver=false;
+  for (let npc of npcs) { npc.met=false; npc.requestId=null; }
+  player.x=14*TILE+8; player.y=12*TILE;
+  buildMap();
+  generateRequests();
+  updateHUD();
+  updateCamera();
+  state.gameStarted=true;
+}
+
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>

@@ -634,7 +634,7 @@ let state = {
   brokedays: 0,
   npcsSpokenToday: new Set(),
   dayTimer: 0,
-  DAY_DURATION: 18000, // ms
+  DAY_DURATION: 45000, // ms — set dynamically; see getDayDuration()
   gameStarted: false,
   gameOver: false,
   activeRequests: [],
@@ -652,6 +652,12 @@ let state = {
 };
 
 const SEASONS = ['Spring','Summer','Autumn','Winter'];
+
+function getDayDuration() {
+  if (state.day <= 2) return 45000;
+  if (state.day <= 4) return 30000;
+  return 20000;
+}
 
 // ============================================================
 // PLAYER
@@ -1705,7 +1711,7 @@ function render(dt) {
   }
 
   // Day timer bar
-  const barPct = 1 - (state.dayTimer / state.DAY_DURATION);
+  const barPct = 1 - (state.dayTimer / getDayDuration());
   ctx.fillStyle = 'rgba(0,0,0,0.5)';
   ctx.fillRect(0, 0, CANVAS_SIZE, 6);
   ctx.fillStyle = barPct < 0.2 ? '#c03020' : '#f0c840';
@@ -1808,7 +1814,7 @@ function update(dt) {
   // Day timer
   state.dayTimer += dt;
   // Tint: last 3 seconds darken
-  const timeLeft = state.DAY_DURATION - state.dayTimer;
+  const timeLeft = getDayDuration() - state.dayTimer;
   if (timeLeft < 3000) {
     state.tintAlpha = 0.35 * (1 - timeLeft/3000);
   } else if (state.dayTimer < 1000) {
@@ -1817,7 +1823,7 @@ function update(dt) {
     state.tintAlpha = 0;
   }
 
-  if (state.dayTimer >= state.DAY_DURATION) {
+  if (state.dayTimer >= getDayDuration()) {
     state.dayTimer = 0;
     endDay();
   }

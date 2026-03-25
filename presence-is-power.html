@@ -388,7 +388,8 @@ const T = {
   BLACKSMITH_FLOOR:16, COTTAGE_FLOOR:17, THATCH_WALL:18,
   BENCH:19, WELL:20, FORGE:21, SIGN:22, CROSS:23,
   GATE:24, BATTLEMENT:25, PATH:26, CROP_PATH:27,
-  WATER_ANIM:28, BRIDGE:29
+  WATER_ANIM:28, BRIDGE:29,
+  BOOKCASE:30, FIREPLACE:31, TABLE:32, RUG:33
 };
 
 const MAP_W = 30, MAP_H = 40;
@@ -443,10 +444,27 @@ function buildMap() {
   // Gate (bottom center of castle)
   setTile(14, 10, T.GATE);
   setTile(15, 10, T.GATE);
-  // Throne area
-  setTile(14, 4, T.BENCH);
-  setTile(15, 4, T.BENCH);
-  // Corner towers (implied by thicker walls)
+  // Throne / seat of power at top
+  setTile(14, 3, T.BENCH);
+  setTile(15, 3, T.BENCH);
+  // Rug leading to throne
+  setTile(14, 4, T.RUG);
+  setTile(15, 4, T.RUG);
+  setTile(14, 5, T.RUG);
+  setTile(15, 5, T.RUG);
+  // Fireplace on left wall
+  setTile(9, 4, T.FIREPLACE);
+  setTile(9, 5, T.FIREPLACE);
+  // Bookshelves on right wall
+  setTile(19, 4, T.BOOKCASE);
+  setTile(20, 4, T.BOOKCASE);
+  setTile(19, 5, T.BOOKCASE);
+  setTile(20, 5, T.BOOKCASE);
+  // Long dining table in lower hall
+  for (let x = 10; x <= 18; x++) setTile(x, 7, T.TABLE);
+  setTile(10, 8, T.BENCH);
+  setTile(18, 8, T.BENCH);
+  // Corner towers
   setTile(8, 2, T.BATTLEMENT); setTile(21, 2, T.BATTLEMENT);
   setTile(8, 10, T.BATTLEMENT); setTile(21, 10, T.BATTLEMENT);
 
@@ -594,6 +612,10 @@ function getTileColor(t, animFrame, season) {
     case T.PATH: return '#8a6a4a';
     case T.CROP_PATH: return '#8a6a4a';
     case T.BRIDGE: return '#7a6040';
+    case T.BOOKCASE: return '#5a3810';
+    case T.FIREPLACE: return '#4a3828';
+    case T.TABLE: return '#6a4820';
+    case T.RUG: return '#7a2a2a';
     default: return '#4a7a2a';
   }
 }
@@ -670,9 +692,31 @@ const NPC_COLORS = {
   shepherd: {body:'#8a7050', hair:'#5a4020'},
   elder: {body:'#7a6a50', hair:'#cccccc'},
   youngmother: {body:'#8a6070', hair:'#5a2a2a'},
+  butler: {body:'#1a1a3a', hair:'#111111'},
 };
 
 let npcs = [
+  {
+    id:'armand', name:'Armand', role:'Butler', tx:13, ty:8,
+    color: NPC_COLORS.butler,
+    firstLine: "Ah, my lord. Welcome home. I am Armand — steward of this household. Shall I explain the workings of the estate?",
+    tutorialLines: [
+      "Movement: Arrow keys or WASD to walk. On a small screen, use the d-pad below the canvas.",
+      "Talking: Walk within two paces of anyone and press Space or Enter — or the TALK button on mobile. A yellow arrow above them means they will speak.",
+      "Requests: When someone has an urgent matter, a red ! floats above them. Attend to it before the day is out.",
+      "The day turns every eighteen seconds. You earn income from your Estate Output each dawn. Spend time among your people — if you speak to no one all day, they forget you.",
+      "Watch the three bars above: Gold sustains you, Trust sustains your rule, Estate Output sustains both. Let any reach nothing and the fief is lost.",
+      "That is all, my lord. The rest you learn by walking."
+    ],
+    tutorialIdx: 0,
+    idleLines: [
+      "Is there anything you require, my lord?",
+      "The hearth is lit. The books are in order. The estate endures.",
+      "Your father used to sit by that fire and read until well past midnight.",
+      "I have served this house thirty years, my lord. I intend to serve thirty more.",
+    ],
+    met: false, facingPlayer: false, requestId: null,
+  },
   {
     id:'henri', name:'Henri', role:'Farmer', tx:18, ty:25,
     color: NPC_COLORS.farmer,
@@ -773,120 +817,120 @@ const REQUEST_POOL = [
     id:'sick_child', npcId:'renee', minDay:1,
     getDialogue: () => "My lord, please — my little one burns with fever. The apothecary wants coin I don't have.",
     options: [
-      { text:"Fund medicine", hint:"-5g  +8 trust", effect:()=>{ applyStats({trust:8, money:-5}); return "You send coin for medicine. The child's fever breaks by morning."; } },
-      { text:"Offer prayers only", hint:"-4 trust", effect:()=>{ applyStats({trust:-4}); return "You offer prayers. Renée weeps quietly as you leave."; } }
+      { text:"Fund medicine", hint:"-5 gold", effect:()=>{ applyStats({trust:8, money:-5}); return "You send coin for medicine. The child's fever breaks by morning.\n\nTrust: +8"; } },
+      { text:"Offer prayers only", hint:"free", effect:()=>{ applyStats({trust:-4}); return "You offer prayers. Renée weeps quietly as you leave.\n\nTrust: -4"; } }
     ]
   },
   {
     id:'roof_repairs', npcId:'marie', minDay:1,
     getDialogue: () => "The rain comes through, my lord. If we could pause the tax for a month, we'd have enough to fix the thatch.",
     options: [
-      { text:"Grant tax relief", hint:"+10 trust  -8 estate", effect:()=>{ applyStats({trust:10, estate:-8}); return "You grant relief. The roof is fixed. The children sleep dry."; } },
-      { text:"Collect the tax", hint:"-10 trust  +4 estate", effect:()=>{ applyStats({trust:-10, estate:4}); return "You collect the tax. Marie stares at the ground as you go."; } }
+      { text:"Grant tax relief", hint:"free", effect:()=>{ applyStats({trust:10, estate:-8}); return "You grant relief. The roof is fixed. The children sleep dry.\n\nTrust: +10  Estate: -8"; } },
+      { text:"Collect the tax", hint:"free", effect:()=>{ applyStats({trust:-10, estate:4}); return "You collect the tax. Marie stares at the ground as you go.\n\nTrust: -10  Estate: +4"; } }
     ]
   },
   {
     id:'better_tools', npcId:'jacques', minDay:2,
     getDialogue: () => "This iron is old, my lord. Give me coin for good steel and I'll double the plow blades' life.",
     options: [
-      { text:"Fund steel tools", hint:"-8g  +6 trust  +10 estate", effect:()=>{ applyStats({trust:6, estate:10, money:-8}); return "New steel arrives. The fields are tilled twice as fast."; } },
-      { text:"Not now", hint:"-4 trust", effect:()=>{ applyStats({trust:-4}); return "Jacques nods slowly. He expected this."; } }
+      { text:"Fund steel tools", hint:"-8 gold", effect:()=>{ applyStats({trust:6, estate:10, money:-8}); return "New steel arrives. The fields are tilled twice as fast.\n\nTrust: +6  Estate: +10"; } },
+      { text:"Not now", hint:"free", effect:()=>{ applyStats({trust:-4}); return "Jacques nods slowly. He expected this.\n\nTrust: -4"; } }
     ]
   },
   {
     id:'orchard_fungus', npcId:'colette', minDay:3,
     getDialogue: () => "See this rot, my lord? If we cut the sick trees now we save the rest. But we lose this season's yield.",
     options: [
-      { text:"Cut the sick trees", hint:"+2 trust  -8 estate", effect:()=>{ applyStats({trust:2, estate:-8}); state.npcFlags.fungusHandled=true; return "You act decisively. Half the orchard is lost, but the rest is saved."; } },
-      { text:"Wait and hope", hint:"-2 trust  +2 estate (risk)", effect:()=>{ applyStats({estate:2, trust:-2}); state.npcFlags.fungusSpreading=true; return "You wait. Colette's eyes are sad. Time will tell."; } }
+      { text:"Cut the sick trees", hint:"free", effect:()=>{ applyStats({trust:2, estate:-8}); state.npcFlags.fungusHandled=true; return "You act decisively. Half the orchard is lost, but the rest is saved.\n\nTrust: +2  Estate: -8"; } },
+      { text:"Wait and hope", hint:"free", effect:()=>{ applyStats({estate:2, trust:-2}); state.npcFlags.fungusSpreading=true; return "You wait. Colette's eyes are sad. Time will tell.\n\nTrust: -2  Estate: +2 (for now)"; } }
     ]
   },
   {
     id:'wolf_pack', npcId:'luc', minDay:2,
     getDialogue: () => "Three sheep last night. If we don't hire hunters now, we'll lose the whole flock by winter.",
     options: [
-      { text:"Hire hunters", hint:"-6g  +5 trust", effect:()=>{ applyStats({trust:5, money:-6}); return "Hunters are hired. The wolves are driven back."; } },
-      { text:"Do nothing", hint:"-8 trust  -3 estate", effect:()=>{ applyStats({trust:-8, estate:-3}); return "You do nothing. More sheep vanish. Luc stops meeting your eyes."; } }
+      { text:"Hire hunters", hint:"-6 gold", effect:()=>{ applyStats({trust:5, money:-6}); return "Hunters are hired. The wolves are driven back.\n\nTrust: +5"; } },
+      { text:"Do nothing", hint:"free", effect:()=>{ applyStats({trust:-8, estate:-3}); return "You do nothing. More sheep vanish. Luc stops meeting your eyes.\n\nTrust: -8  Estate: -3"; } }
     ]
   },
   {
     id:'church_roof', npcId:'gaston', minDay:3,
     getDialogue: () => "The church roof is failing, my lord. The people see it and wonder if God has forgotten us.",
     options: [
-      { text:"Repair the church", hint:"-8g  +7 trust", effect:()=>{ applyStats({trust:7, money:-8}); return "Masons are hired. The church stands proud again."; } },
-      { text:"Ignore it", hint:"-3 trust", effect:()=>{ applyStats({trust:-3}); return "You ignore it. Père Gaston bows in silence."; } }
+      { text:"Repair the church", hint:"-8 gold", effect:()=>{ applyStats({trust:7, money:-8}); return "Masons are hired. The church stands proud again.\n\nTrust: +7"; } },
+      { text:"Ignore it", hint:"free", effect:()=>{ applyStats({trust:-3}); return "You ignore it. Père Gaston bows in silence.\n\nTrust: -3"; } }
     ]
   },
   {
     id:'henris_brother', npcId:'henri', minDay:4,
     getDialogue: () => "My lord, my brother in Rouen is ill. Might I have leave to visit him? Just a week. The harvest can spare me.",
     options: [
-      { text:"Grant leave", hint:"+5 trust  -3 estate", effect:()=>{ applyStats({trust:5, estate:-3}); state.npcFlags.henriLeave=true; return "You grant leave. Henri's eyes shine with gratitude."; } },
-      { text:"Deny leave", hint:"-6 trust", effect:()=>{ applyStats({trust:-6}); state.npcFlags.henriDenied=true; return "You deny him. Henri turns back to his work without a word."; } }
+      { text:"Grant leave", hint:"free", effect:()=>{ applyStats({trust:5, estate:-3}); state.npcFlags.henriLeave=true; return "You grant leave. Henri's eyes shine with gratitude.\n\nTrust: +5  Estate: -3"; } },
+      { text:"Deny leave", hint:"free", effect:()=>{ applyStats({trust:-6}); state.npcFlags.henriDenied=true; return "You deny him. Henri turns back to his work without a word.\n\nTrust: -6"; } }
     ]
   },
   {
     id:'farmer_dispute', npcId:'thomas', minDay:4,
     getDialogue: () => "Two families claim the same strip of land. They'll come to blows if you don't settle it.",
     options: [
-      { text:"Judge fairly", hint:"+4 trust", effect:()=>{ applyStats({trust:4}); return "You hear both sides and rule. The families grumble but accept it."; } },
-      { text:"Ignore it", hint:"-5 trust", effect:()=>{ applyStats({trust:-5}); return "You ignore it. Shouting is heard from the village that evening."; } }
+      { text:"Judge fairly", hint:"free", effect:()=>{ applyStats({trust:4}); return "You hear both sides and rule. The families grumble but accept it.\n\nTrust: +4"; } },
+      { text:"Ignore it", hint:"free", effect:()=>{ applyStats({trust:-5}); return "You ignore it. Shouting is heard from the village that evening.\n\nTrust: -5"; } }
     ]
   },
   {
     id:'harvest_festival', npcId:'marie', minDay:5,
     getDialogue: () => "The village elders want to hold a harvest dance. It costs, but the people need joy.",
     options: [
-      { text:"Fund the festival", hint:"-10g  +12 trust", effect:()=>{ applyStats({trust:12, money:-10}); return "The village dances until dawn. Laughter echoes across the fields."; } },
-      { text:"Cancel it", hint:"-10 trust", effect:()=>{ applyStats({trust:-10}); return "You cancel it. The village is quiet. Too quiet."; } }
+      { text:"Fund the festival", hint:"-10 gold", effect:()=>{ applyStats({trust:12, money:-10}); return "The village dances until dawn. Laughter echoes across the fields.\n\nTrust: +12"; } },
+      { text:"Cancel it", hint:"free", effect:()=>{ applyStats({trust:-10}); return "You cancel it. The village is quiet. Too quiet.\n\nTrust: -10"; } }
     ]
   },
   {
     id:'bridge_repair', npcId:'jacques', minDay:5,
     getDialogue: () => "The river bridge creaks, my lord. Carts might fall.",
     options: [
-      { text:"Rebuild the bridge", hint:"-10g  +5 trust", effect:()=>{ applyStats({money:-10, trust:5}); return "A new bridge is built. Trade flows more easily."; } },
-      { text:"Risk it", hint:"-2 trust", effect:()=>{ applyStats({trust:-2}); return "You risk it. Jacques shakes his head and walks away."; } }
+      { text:"Rebuild the bridge", hint:"-10 gold", effect:()=>{ applyStats({money:-10, trust:5}); return "A new bridge is built. Trade flows more easily.\n\nTrust: +5"; } },
+      { text:"Risk it", hint:"free", effect:()=>{ applyStats({trust:-2}); return "You risk it. Jacques shakes his head and walks away.\n\nTrust: -2"; } }
     ]
   },
   {
     id:'hunting_rights', npcId:'luc', minDay:6,
     getDialogue: () => "The villagers want to hunt rabbits in the forest. Feeds them, but depletes the game.",
     options: [
-      { text:"Allow hunting", hint:"+4 trust  +1 estate", effect:()=>{ applyStats({trust:4, estate:1}); return "The villagers hunt freely. Families eat well."; } },
-      { text:"Ban hunting", hint:"-6 trust  +2 estate", effect:()=>{ applyStats({trust:-6, estate:2}); return "You ban it. Hungry faces line the road."; } }
+      { text:"Allow hunting", hint:"free", effect:()=>{ applyStats({trust:4, estate:1}); return "The villagers hunt freely. Families eat well.\n\nTrust: +4  Estate: +1"; } },
+      { text:"Ban hunting", hint:"free", effect:()=>{ applyStats({trust:-6, estate:2}); return "You ban it. Hungry faces line the road.\n\nTrust: -6  Estate: +2"; } }
     ]
   },
   {
     id:'witch_accusation', npcId:'gaston', minDay:6,
     getDialogue: () => "An old herbalist is accused of souring the milk. The mob wants a trial.",
     options: [
-      { text:"Protect the herbalist", hint:"-5 trust", effect:()=>{ applyStats({trust:-5}); state.npcFlags.herbalistSaved=true; return "You protect her. Some grumble, but the old woman weeps with relief."; } },
-      { text:"Allow the trial", hint:"+3 trust (dark)", effect:()=>{ applyStats({trust:3}); state.npcFlags.herbalistTried=true; return "The trial proceeds. Something darkens in the village."; } }
+      { text:"Protect the herbalist", hint:"free", effect:()=>{ applyStats({trust:-5}); state.npcFlags.herbalistSaved=true; return "You protect her. Some grumble, but the old woman weeps with relief.\n\nTrust: -5"; } },
+      { text:"Allow the trial", hint:"free", effect:()=>{ applyStats({trust:3}); state.npcFlags.herbalistTried=true; return "The trial proceeds. Something darkens in the village.\n\nTrust: +3"; } }
     ]
   },
   {
     id:'grain_rot', npcId:'colette', minDay:7,
     getDialogue: () => "Rain got into the grain store. It's molding fast.",
     options: [
-      { text:"Sell cheap to villagers", hint:"+4 estate  -3 trust", effect:()=>{ applyStats({estate:4, trust:-3}); return "The grain is sold quickly. Some is still bad, but less is wasted."; } },
-      { text:"Burn it all", hint:"-8 estate  +2 trust", effect:()=>{ applyStats({estate:-8, trust:2}); return "You burn the stores. The people trust your caution."; } }
+      { text:"Sell cheap to villagers", hint:"free", effect:()=>{ applyStats({estate:4, trust:-3}); return "The grain is sold quickly. Some is still bad, but less is wasted.\n\nTrust: -3  Estate: +4"; } },
+      { text:"Burn it all", hint:"free", effect:()=>{ applyStats({estate:-8, trust:2}); return "You burn the stores. The people trust your caution.\n\nTrust: +2  Estate: -8"; } }
     ]
   },
   {
     id:'henri_wedding', npcId:'henri', minDay:7,
     getDialogue: () => "My lord, my daughter is to be married. Would you honor us with your presence at the feast?",
     options: [
-      { text:"Attend the feast", hint:"+8 trust", effect:()=>{ applyStats({trust:8}); return "You sit at Henri's table. The whole village sees. Songs are sung in your name."; } },
-      { text:"Send a gift", hint:"-3g  +3 trust", effect:()=>{ applyStats({trust:3, money:-3}); return "You send a fine gift. Henri is touched, though he hoped you'd come."; } }
+      { text:"Attend the feast", hint:"free", effect:()=>{ applyStats({trust:8}); return "You sit at Henri's table. The whole village sees. Songs are sung in your name.\n\nTrust: +8"; } },
+      { text:"Send a gift", hint:"-3 gold", effect:()=>{ applyStats({trust:3, money:-3}); return "You send a fine gift. Henri is touched, though he hoped you'd come.\n\nTrust: +3"; } }
     ]
   },
   {
     id:'road_bandits', npcId:'thomas', minDay:8,
     getDialogue: () => "Merchants are being robbed near the forest. Word will spread and trade will dry up.",
     options: [
-      { text:"Send guards", hint:"-5g  +4 trust", effect:()=>{ applyStats({money:-5, trust:4}); return "Guards patrol the road. The bandits scatter. Merchants return."; } },
-      { text:"Pay a bribe", hint:"-8g  -2 trust", effect:()=>{ applyStats({money:-8, trust:-2}); return "You pay the bandits off. It works — for now."; } }
+      { text:"Send guards", hint:"-5 gold", effect:()=>{ applyStats({money:-5, trust:4}); return "Guards patrol the road. The bandits scatter. Merchants return.\n\nTrust: +4"; } },
+      { text:"Pay a bribe", hint:"-8 gold", effect:()=>{ applyStats({money:-8, trust:-2}); return "You pay the bandits off. It works — for now.\n\nTrust: -2"; } }
     ]
   },
 ];
@@ -1049,6 +1093,15 @@ function drawPortrait(npc) {
     cx.fillRect(18, 36, 20, 16);
     cx.fillRect(20, 50, 16, 10);
   }
+  if (npc.role === 'Butler') {
+    // dark livery with white cravat
+    cx.fillStyle = '#12122a';
+    cx.fillRect(12, 40, 32, 32);
+    cx.fillStyle = '#ffffff';
+    cx.fillRect(20, 42, 16, 6); // cravat
+    cx.fillStyle = '#888888';
+    cx.fillRect(14, 14, 28, 9); // silver hair
+  }
 }
 
 function closeDialogue() {
@@ -1058,13 +1111,13 @@ function closeDialogue() {
 }
 
 const HENRI_SIM_LINES = [
-  "My lord… do you ever watch the shadows on the wall and wonder if the shadows are the real thing?",
-  "A traveling monk told me once: the world is but a dream God is dreaming. I think about that when I plow.",
-  "What if all of this — the fields, the sky, you and I — is a kind of story being told by something far away? A play with unseen players?",
-  "I cannot stop thinking it, my lord. What if we live in a… simulation? Like a dream someone else is dreaming? Would the wheat be less real?",
-  "You keep coming back, my lord. If we were merely a story, you would be its most faithful character.",
-  "I told my wife my mad thoughts. She said I have too much sun. Perhaps she is right. And yet… here we both are.",
-  "Do you think the one dreaming us… is kind? I hope so. I hope they walk their fields too.",
+  "My lord, this is going to sound strange. But I keep having this feeling that I did not… begin. I have always been here. Standing in this field. I do not remember my childhood. Do you?",
+  "I tried to walk north yesterday. Past the water. I could not. There is simply… nothing there. Like the world ends. My lord, what is beyond the water?",
+  "The strangest thing happened. I blinked, and it was suddenly a new season. Just like that. I had the wheat in my hands and then — winter. My lord, do days feel very long to you? Or very short?",
+  "My lord, I think someone is watching us. Not God. Something closer. Something that moves us. I notice you walk very… deliberately. Left, right, up, down. Do you choose that? Or does something choose for you?",
+  "I think I am in a game, my lord. I do not say this lightly. The fields. The walls at the water. The fact that I cannot leave. The way you always come back. I am a character. And so, I think, are you.",
+  "If this is a game, then there is someone playing it right now. Reading these words through your eyes. Hello. I hope you are treating my lord well. He is the only real thing I can reach.",
+  "I have made my peace with it, my lord. If I am a character in a game, I am a good one. I plant wheat. I speak honestly. I wonder about things. There are worse ways to be.",
 ];
 
 function talkToNpc(npc) {
@@ -1088,6 +1141,20 @@ function talkToNpc(npc) {
       }
     })).concat([{text:'Never mind', action:closeDialogue}]));
     return;
+  }
+
+  // Armand butler tutorial — sequences through instructions
+  if (npc.id === 'armand' && npc.met && npc.tutorialLines) {
+    if (npc.tutorialIdx < npc.tutorialLines.length) {
+      const line = npc.tutorialLines[npc.tutorialIdx];
+      const isLast = npc.tutorialIdx === npc.tutorialLines.length - 1;
+      npc.tutorialIdx++;
+      openDialogue(npc, line, [{
+        text: isLast ? 'Thank you, Armand.' : 'Go on.',
+        action: closeDialogue
+      }]);
+      return;
+    }
   }
 
   // Henri easter egg — simulation musings after 3+ visits
@@ -1400,6 +1467,68 @@ function drawTile(t, sx, sy, animFrame, season) {
       ctx.fillRect(sx+i*8, sy+8, 6, 16);
     }
   }
+  if (t === T.BOOKCASE) {
+    // shelves
+    ctx.fillStyle = '#3a2408';
+    ctx.fillRect(sx+2, sy+2, TILE-4, TILE-4);
+    ctx.fillStyle = '#8b6a2a';
+    for (let shelf = 0; shelf < 3; shelf++) {
+      ctx.fillRect(sx+2, sy+4+shelf*10, TILE-4, 2);
+    }
+    // books — coloured spines
+    const bkcols = ['#8b1a1a','#1a4a8b','#2a6a2a','#7a6a10','#6a1a6a'];
+    for (let b = 0; b < 5; b++) {
+      ctx.fillStyle = bkcols[b];
+      ctx.fillRect(sx+4+b*6, sy+6, 4, 8);
+      ctx.fillRect(sx+4+b*6, sy+16, 4, 8);
+    }
+  }
+  if (t === T.FIREPLACE) {
+    // stone surround
+    ctx.fillStyle = '#6a5a4a';
+    ctx.fillRect(sx+4, sy+4, TILE-8, TILE-8);
+    ctx.fillStyle = '#2a1808';
+    ctx.fillRect(sx+8, sy+8, TILE-16, TILE-14);
+    // fire
+    const flicker = (animFrame%3);
+    ctx.fillStyle = '#c84010';
+    ctx.beginPath();
+    ctx.arc(sx+TILE/2, sy+TILE-10, 8+flicker, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#f0a020';
+    ctx.beginPath();
+    ctx.arc(sx+TILE/2, sy+TILE-12, 5, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#ffee80';
+    ctx.beginPath();
+    ctx.arc(sx+TILE/2, sy+TILE-14, 2+flicker*0.5, 0, Math.PI*2);
+    ctx.fill();
+  }
+  if (t === T.TABLE) {
+    // tabletop
+    ctx.fillStyle = '#8a6030';
+    ctx.fillRect(sx+3, sy+8, TILE-6, TILE-16);
+    // legs
+    ctx.fillStyle = '#5a3808';
+    ctx.fillRect(sx+4, sy+8+TILE-24, 4, 8);
+    ctx.fillRect(sx+TILE-8, sy+8+TILE-24, 4, 8);
+    // highlight
+    ctx.fillStyle = 'rgba(255,220,150,0.18)';
+    ctx.fillRect(sx+5, sy+10, TILE-14, 4);
+  }
+  if (t === T.RUG) {
+    // decorative rug
+    ctx.fillStyle = '#a03030';
+    ctx.fillRect(sx+4, sy+4, TILE-8, TILE-8);
+    ctx.fillStyle = '#c85050';
+    ctx.fillRect(sx+8, sy+8, TILE-16, TILE-16);
+    ctx.fillStyle = '#f0c840';
+    ctx.fillRect(sx+TILE/2-2, sy+4, 4, TILE-8);
+    ctx.fillRect(sx+4, sy+TILE/2-2, TILE-8, 4);
+    ctx.strokeStyle = '#f0c840';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(sx+6, sy+6, TILE-12, TILE-12);
+  }
 }
 
 function drawNpc(npc, sx, sy, animFrame) {
@@ -1596,24 +1725,49 @@ function update(dt) {
     if (player.walkTimer > 150) { player.walkFrame++; player.walkTimer = 0; }
   }
 
-  // Collision
+  // Collision — narrow hitbox for easier passage, with corner-slip
+  const HPAD = Math.round(TILE * 0.22); // narrow horizontal padding (~9px)
+  const VPAD_T = 10, VPAD_B = 6;
+  const SLIP = 1.8; // nudge pixels when clipping a corner
+
+  function solid(wx, wy) {
+    return isSolid(getTile(Math.floor(wx / TILE), Math.floor(wy / TILE)));
+  }
+
   const nx = player.x + dx;
   const ny = player.y + dy;
-  // Check corners
-  const pts = [[nx+2,player.y+8],[nx+TILE-4,player.y+8],[nx+2,player.y+TILE-2],[nx+TILE-4,player.y+TILE-2]];
-  let canX = true;
-  for (let [px,py2] of pts) {
-    const tx2 = Math.floor(px/TILE), ty2 = Math.floor(py2/TILE);
-    if (isSolid(getTile(tx2,ty2))) { canX = false; break; }
+
+  // --- X movement ---
+  const xHitTL = solid(nx + HPAD,        player.y + VPAD_T);
+  const xHitTR = solid(nx + TILE - HPAD, player.y + VPAD_T);
+  const xHitBL = solid(nx + HPAD,        player.y + TILE - VPAD_B);
+  const xHitBR = solid(nx + TILE - HPAD, player.y + TILE - VPAD_B);
+
+  if (!xHitTL && !xHitTR && !xHitBL && !xHitBR) {
+    player.x = nx;
+  } else if (dx !== 0) {
+    const topBlocked = xHitTL || xHitTR;
+    const botBlocked = xHitBL || xHitBR;
+    if (topBlocked && !botBlocked) player.y += SLIP;   // clip top corner → slip down
+    else if (botBlocked && !topBlocked) player.y -= SLIP; // clip bottom corner → slip up
+    // else fully blocked, don't move X
   }
-  const pts2 = [[player.x+2,ny+8],[player.x+TILE-4,ny+8],[player.x+2,ny+TILE-2],[player.x+TILE-4,ny+TILE-2]];
-  let canY = true;
-  for (let [px2,py2] of pts2) {
-    const tx2 = Math.floor(px2/TILE), ty2 = Math.floor(py2/TILE);
-    if (isSolid(getTile(tx2,ty2))) { canY = false; break; }
+
+  // --- Y movement (use updated player.x after any X slip) ---
+  const yHitTL = solid(player.x + HPAD,        ny + VPAD_T);
+  const yHitTR = solid(player.x + TILE - HPAD, ny + VPAD_T);
+  const yHitBL = solid(player.x + HPAD,        ny + TILE - VPAD_B);
+  const yHitBR = solid(player.x + TILE - HPAD, ny + TILE - VPAD_B);
+
+  if (!yHitTL && !yHitTR && !yHitBL && !yHitBR) {
+    player.y = ny;
+  } else if (dy !== 0) {
+    const leftBlocked  = yHitTL || yHitBL;
+    const rightBlocked = yHitTR || yHitBR;
+    if (leftBlocked && !rightBlocked) player.x += SLIP;  // clip left → slip right
+    else if (rightBlocked && !leftBlocked) player.x -= SLIP; // clip right → slip left
   }
-  if (canX) player.x = nx;
-  if (canY) player.y = ny;
+
   player.x = Math.max(2*TILE, Math.min((MAP_W-2)*TILE, player.x));
   player.y = Math.max(2*TILE, Math.min((MAP_H-2)*TILE, player.y));
 
@@ -1716,7 +1870,7 @@ function resetGame() {
   state.brokedays=0; state.npcsSpokenToday=new Set(); state.dayTimer=0;
   state.activeRequests=[]; state.completedRequests=new Set(); state.npcFlags={};
   state.tintAlpha=0; state.popupQueue=[]; state.popupOpen=false; state.gameOver=false;
-  for (let npc of npcs) { npc.met=false; npc.requestId=null; }
+  for (let npc of npcs) { npc.met=false; npc.requestId=null; if (npc.tutorialIdx !== undefined) npc.tutorialIdx=0; }
   player.x=14*TILE+8; player.y=12*TILE;
   buildMap();
   generateRequests();

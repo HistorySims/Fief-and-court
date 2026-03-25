@@ -310,12 +310,9 @@ body {
     <div class="hud-label">Day / Season</div>
     <div class="hud-day" id="hud-day">Day 1 — Spring</div>
   </div>
-  <div class="hud-item">
-    <div class="hud-label">Money</div>
-    <div class="hud-bar-wrap">
-      <div class="hud-bar-bg"><div class="hud-bar-fill" id="bar-money" style="background:#f0c840;width:30%"></div></div>
-      <div class="hud-val" id="val-money">30</div>
-    </div>
+  <div class="hud-item" style="flex:0 0 auto; min-width:80px;">
+    <div class="hud-label">Gold</div>
+    <div class="hud-day" id="val-money" style="color:#f0c840;">⚙ 30</div>
   </div>
   <div class="hud-item">
     <div class="hud-label">Peasant Trust</div>
@@ -568,8 +565,8 @@ function buildMap() {
   // Bridge over water
   setTile(14, 38, T.BRIDGE); setTile(15, 38, T.BRIDGE);
 
-  // ---- ROAD SIGN (south edge) ----
-  setTile(14, 36, T.SIGN); setTile(15, 36, T.SIGN);
+  // ---- ROAD SIGN — at the forest edge, just before the bridge ----
+  setTile(14, 32, T.SIGN); setTile(15, 32, T.SIGN);
 }
 
 buildMap();
@@ -660,7 +657,7 @@ const SEASONS = ['Spring','Summer','Autumn','Winter'];
 // PLAYER
 // ============================================================
 let player = {
-  x: 14 * TILE + 8, y: 12 * TILE,
+  x: 14 * TILE + 4, y: 12 * TILE,   // just south of the castle gate
   vx: 0, vy: 0,
   facing: 2, // 0=up,1=right,2=down,3=left
   moving: false,
@@ -772,6 +769,11 @@ let npcs = [
       "I talk to the trees. They listen better than some men.",
       "Patience. The fruit comes when it will."
     ],
+    fungusLines: [
+      "The rot spreads, my lord. I warned you.",
+      "Another tree gone dark this morning. We are losing them one by one.",
+      "Do you smell it? That sweetness in the air is decay, not blossom."
+    ],
     met: false, facingPlayer: false, requestId: null,
   },
   {
@@ -804,6 +806,19 @@ let npcs = [
       "Little Pierre is better today. Thanks to you.",
       "The children ask if they'll see you again.",
       "God bless you, my lord. Truly."
+    ],
+    met: false, facingPlayer: false, requestId: null,
+  },
+  {
+    id:'scribe', name:'Brother Edouard', role:'Court Scribe', tx:17, ty:7,
+    color: {body:'#4a4060', hair:'#222230'},
+    firstLine: "My lord. I keep the accounts, the correspondence, the records of your judgements. I have been here longer than you have been alive.",
+    idleLines: [
+      "The records show thirty-one years of unbroken harvest. Your father would mark each one with a candle.",
+      "I notice everything, my lord. It is my function. I noticed you came in from outside just now.",
+      "The quill runs dry. The fief goes on. That is the lesson of the accounts.",
+      "Your grandfather founded this estate on a Tuesday. I have the document if you wish to see it.",
+      "I write down what happens, my lord. I do not judge it. That is your work, not mine."
     ],
     met: false, facingPlayer: false, requestId: null,
   },
@@ -1102,6 +1117,21 @@ function drawPortrait(npc) {
     cx.fillStyle = '#888888';
     cx.fillRect(14, 14, 28, 9); // silver hair
   }
+  if (npc.role === 'Court Scribe') {
+    // dark scholar robe
+    cx.fillStyle = '#2a2840';
+    cx.fillRect(12, 40, 32, 32);
+    // ink-stained fingers hint — dark left hand
+    cx.fillStyle = '#1a1828';
+    cx.fillRect(12, 50, 8, 10);
+    // tonsure (monk-style bald patch)
+    cx.fillStyle = '#e8c090';
+    cx.fillRect(18, 14, 20, 8);
+    cx.fillStyle = npc.color.hair;
+    cx.fillRect(14, 14, 4, 14);
+    cx.fillRect(38, 14, 4, 14);
+    cx.fillRect(14, 14, 28, 5);
+  }
 }
 
 function closeDialogue() {
@@ -1160,8 +1190,8 @@ function talkToNpc(npc) {
   // Henri easter egg — simulation musings after 3+ visits
   if (npc.id === 'henri' && npc.met) {
     state.npcFlags.henriTalks = (state.npcFlags.henriTalks || 0) + 1;
-    if (state.npcFlags.henriTalks >= 3) {
-      const idx = Math.min(state.npcFlags.henriTalks - 3, HENRI_SIM_LINES.length - 1);
+    if (state.npcFlags.henriTalks >= 2) {
+      const idx = Math.min(state.npcFlags.henriTalks - 2, HENRI_SIM_LINES.length - 1);
       openDialogue(npc, HENRI_SIM_LINES[idx], [{text:'...I am not sure, Henri.', action:closeDialogue}, {text:'Perhaps you are right.', action:closeDialogue}]);
       return;
     }
@@ -1172,6 +1202,9 @@ function talkToNpc(npc) {
   if (!npc.met) {
     npc.met = true;
     text = npc.firstLine;
+  } else if (npc.id === 'colette' && state.npcFlags.fungusSpreading && !state.npcFlags.fungusHandled && npc.fungusLines) {
+    const fl = npc.fungusLines;
+    text = fl[Math.floor(Math.random() * fl.length)];
   } else {
     text = npc.idleLines[Math.floor(Math.random() * npc.idleLines.length)];
   }
@@ -1215,10 +1248,9 @@ function applyStats(delta) {
 
 function updateHUD() {
   document.getElementById('hud-day').textContent = 'Day '+state.day+' — '+SEASONS[state.season];
-  document.getElementById('val-money').textContent = state.money;
+  document.getElementById('val-money').textContent = '⚙ '+state.money;
   document.getElementById('val-trust').textContent = state.trust;
   document.getElementById('val-estate').textContent = state.estate;
-  document.getElementById('bar-money').style.width  = Math.min(100, state.money) + '%';
   document.getElementById('bar-trust').style.width  = state.trust + '%';
   document.getElementById('bar-estate').style.width = state.estate + '%';
 }
@@ -1871,7 +1903,7 @@ function resetGame() {
   state.activeRequests=[]; state.completedRequests=new Set(); state.npcFlags={};
   state.tintAlpha=0; state.popupQueue=[]; state.popupOpen=false; state.gameOver=false;
   for (let npc of npcs) { npc.met=false; npc.requestId=null; if (npc.tutorialIdx !== undefined) npc.tutorialIdx=0; }
-  player.x=14*TILE+8; player.y=12*TILE;
+  player.x=14*TILE+4; player.y=12*TILE;
   buildMap();
   generateRequests();
   updateHUD();

@@ -314,15 +314,29 @@ body {
     <div class="hud-label">Gold</div>
     <div class="hud-day" id="val-money" style="color:#f0c840;">⚙ 30</div>
   </div>
+  <div class="hud-item" id="hud-status" style="display:none;">
+    <div class="hud-label">Your Standing at Court</div>
+    <div class="hud-bar-wrap">
+      <div class="hud-bar-bg"><div class="hud-bar-fill" id="bar-status" style="background:#d4a020;width:30%"></div></div>
+      <div class="hud-val" id="val-status">30</div>
+    </div>
+  </div>
+  <div class="hud-item" id="hud-favor" style="display:none;">
+    <div class="hud-label">Royal Favor</div>
+    <div class="hud-bar-wrap">
+      <div class="hud-bar-bg"><div class="hud-bar-fill" id="bar-favor" style="background:#e0a030;width:30%"></div></div>
+      <div class="hud-val" id="val-favor">30</div>
+    </div>
+  </div>
   <div class="hud-item">
-    <div class="hud-label">Peasant Trust</div>
+    <div class="hud-label" id="label-trust">Peasant Trust</div>
     <div class="hud-bar-wrap">
       <div class="hud-bar-bg"><div class="hud-bar-fill" id="bar-trust" style="background:#50c878;width:70%"></div></div>
       <div class="hud-val" id="val-trust">70</div>
     </div>
   </div>
   <div class="hud-item">
-    <div class="hud-label">Estate Output</div>
+    <div class="hud-label" id="label-estate">Estate Output</div>
     <div class="hud-bar-wrap">
       <div class="hud-bar-bg"><div class="hud-bar-fill" id="bar-estate" style="background:#c87840;width:60%"></div></div>
       <div class="hud-val" id="val-estate">60</div>
@@ -386,13 +400,21 @@ const T = {
   BENCH:19, WELL:20, FORGE:21, SIGN:22, CROSS:23,
   GATE:24, BATTLEMENT:25, PATH:26, CROP_PATH:27,
   WATER_ANIM:28, BRIDGE:29,
-  BOOKCASE:30, FIREPLACE:31, TABLE:32, RUG:33
+  BOOKCASE:30, FIREPLACE:31, TABLE:32, RUG:33,
+  // ---- Court / Versailles tiles ----
+  MARBLE_FLOOR:34, MARBLE_WALL:35, GOLD_TRIM:36,
+  GARDEN_BED:37, FOUNTAIN:38, HEDGE_FORMAL:39,
+  CANAL:40, GRAVEL:41, PARQUET:42, MIRROR_WALL:43,
+  TOPIARY:44, ARCH:45, THRONE:46
 };
 
 const MAP_W = 30, MAP_H = 40;
 const TILE = 40;
 const VP = 15; // viewport tiles (16×40=640)
 const CANVAS_SIZE = 640;
+
+// Court map dimensions
+const COURT_W = 24, COURT_H = 20;
 
 // ============================================================
 // MAP DEFINITION
@@ -572,6 +594,97 @@ function buildMap() {
 buildMap();
 
 // ============================================================
+// COURT MAP (Versailles) — 24×20, same TILE engine
+// ============================================================
+let courtMapData = new Array(COURT_W * COURT_H).fill(T.GRAVEL);
+
+function setCourtTile(x, y, t) {
+  if (x < 0 || y < 0 || x >= COURT_W || y >= COURT_H) return;
+  courtMapData[y * COURT_W + x] = t;
+}
+function getCourtTile(x, y) {
+  if (x < 0 || y < 0 || x >= COURT_W || y >= COURT_H) return T.MARBLE_WALL;
+  return courtMapData[y * COURT_W + x];
+}
+
+function buildCourtMap() {
+  // Outer walls all around
+  for (let x = 0; x < COURT_W; x++) {
+    setCourtTile(x, 0, T.MARBLE_WALL);
+    setCourtTile(x, COURT_H-1, T.CANAL);
+  }
+  for (let y = 0; y < COURT_H; y++) {
+    setCourtTile(0, y, T.MARBLE_WALL);
+    setCourtTile(COURT_W-1, y, T.MARBLE_WALL);
+  }
+
+  // ---- PALACE INTERIOR (rows 1-7) — Hall of Mirrors ----
+  for (let x = 1; x < COURT_W-1; x++)
+    for (let y = 1; y <= 7; y++)
+      setCourtTile(x, y, T.PARQUET);
+  // Mirror walls along the top of the hall
+  for (let x = 2; x < COURT_W-2; x++) setCourtTile(x, 1, T.MIRROR_WALL);
+  // Gold trim columns down the hall
+  for (let y = 2; y <= 6; y++) {
+    setCourtTile(4, y, T.GOLD_TRIM);
+    setCourtTile(COURT_W-5, y, T.GOLD_TRIM);
+  }
+  // Throne at top center (the King — visible, inaccessible)
+  setCourtTile(11, 1, T.THRONE);
+  setCourtTile(12, 1, T.THRONE);
+  // Side mirror walls
+  for (let y = 2; y <= 6; y++) {
+    setCourtTile(1, y, T.MIRROR_WALL);
+    setCourtTile(COURT_W-2, y, T.MIRROR_WALL);
+  }
+
+  // ---- FORECOURT / transition (rows 8-9) ----
+  for (let x = 1; x < COURT_W-1; x++) {
+    setCourtTile(x, 8, T.GRAVEL);
+    setCourtTile(x, 9, T.GRAVEL);
+  }
+  // Grand arch doorway from palace to gardens
+  setCourtTile(11, 8, T.ARCH);
+  setCourtTile(12, 8, T.ARCH);
+
+  // ---- FORMAL GARDENS (rows 10-15) ----
+  for (let y = 10; y <= 15; y++) {
+    for (let x = 1; x < COURT_W-1; x++) {
+      // gravel cross-paths at x=11,12 and y=12,13; beds elsewhere
+      if (x === 11 || x === 12) { setCourtTile(x, y, T.GRAVEL); continue; }
+      if (y === 12 || y === 13) { setCourtTile(x, y, T.GRAVEL); continue; }
+      setCourtTile(x, y, T.GARDEN_BED);
+    }
+  }
+  // Formal hedges bordering the beds — with a gravel gate at the central path
+  for (let x = 2; x < COURT_W-2; x++) {
+    if (x === 11 || x === 12) { setCourtTile(x, 10, T.GRAVEL); continue; }
+    setCourtTile(x, 10, T.HEDGE_FORMAL);
+  }
+  // Topiary at the four garden corners
+  setCourtTile(2, 11, T.TOPIARY);  setCourtTile(COURT_W-3, 11, T.TOPIARY);
+  setCourtTile(2, 14, T.TOPIARY);  setCourtTile(COURT_W-3, 14, T.TOPIARY);
+  // Central fountain
+  setCourtTile(11, 12, T.FOUNTAIN); setCourtTile(12, 12, T.FOUNTAIN);
+  setCourtTile(11, 13, T.FOUNTAIN); setCourtTile(12, 13, T.FOUNTAIN);
+
+  // ---- GRAND CANAL (rows 16-18) ----
+  for (let y = 16; y <= 18; y++)
+    for (let x = 1; x < COURT_W-1; x++)
+      setCourtTile(x, y, T.CANAL);
+  // A viewing terrace strip at row 16 center
+  for (let x = 9; x <= 14; x++) setCourtTile(x, 16, T.GRAVEL);
+}
+buildCourtMap();
+
+// World-aware tile accessors
+function getTileW(x, y) {
+  return state.currentWorld === 'court' ? getCourtTile(x, y) : getTile(x, y);
+}
+function curMapW() { return state.currentWorld === 'court' ? COURT_W : MAP_W; }
+function curMapH() { return state.currentWorld === 'court' ? COURT_H : MAP_H; }
+
+// ============================================================
 // TILE COLORS
 // ============================================================
 function getTileColor(t, animFrame, season) {
@@ -613,6 +726,20 @@ function getTileColor(t, animFrame, season) {
     case T.FIREPLACE: return '#4a3828';
     case T.TABLE: return '#6a4820';
     case T.RUG: return '#7a2a2a';
+    // ---- Court tiles ----
+    case T.MARBLE_FLOOR: return '#e8e0d0';
+    case T.MARBLE_WALL: return '#b8b0a0';
+    case T.GOLD_TRIM: return '#d4a020';
+    case T.GARDEN_BED: return '#2a5a1a';
+    case T.FOUNTAIN: return '#4070c0';
+    case T.HEDGE_FORMAL: return '#1a4a1a';
+    case T.CANAL: return '#1848a0';
+    case T.GRAVEL: return '#c0b090';
+    case T.PARQUET: return '#c8903a';
+    case T.MIRROR_WALL: return '#a0b8d0';
+    case T.TOPIARY: return '#2a6a1a';
+    case T.ARCH: return '#9a8870';
+    case T.THRONE: return '#7a1818';
     default: return '#4a7a2a';
   }
 }
@@ -620,6 +747,15 @@ function getTileColor(t, animFrame, season) {
 function isSolid(t) {
   return [T.WATER_ANIM, T.STONE_WALL, T.THATCH_WALL,
           T.HEDGE, T.BATTLEMENT, T.WATER].includes(t);
+}
+
+function isCourtSolid(t) {
+  // ARCH is a doorway — walkable. Everything structural blocks.
+  return [T.MARBLE_WALL, T.MIRROR_WALL, T.HEDGE_FORMAL,
+          T.CANAL, T.TOPIARY, T.FOUNTAIN, T.THRONE].includes(t);
+}
+function isSolidW(t) {
+  return state.currentWorld === 'court' ? isCourtSolid(t) : isSolid(t);
 }
 
 // ============================================================
@@ -649,6 +785,19 @@ let state = {
   lastTime: 0,
   animFrame: 0,
   animTimer: 0,
+  // ---- Phase 2: The Summons and the Court ----
+  currentWorld: 'fief',     // 'fief' | 'court'
+  favor: 30,                // Royal Favor
+  courtStatus: 30,          // player's standing at court
+  messengerArrived: false,
+  summonsAccepted: false,
+  daysAwayFromFief: 0,
+  courtDaysSpent: 0,
+  blocksUsedToday: 0,
+  intendantInstalled: false,
+  intendantMet: false,
+  courtDaySummary: null,    // overlay after a court day
+  travelScreen: null,       // {phase, timer, total}
 };
 
 const SEASONS = ['Spring','Summer','Autumn','Winter'];
@@ -677,10 +826,11 @@ let player = {
 // ============================================================
 let cam = { x: 0, y: 0 };
 function updateCamera() {
+  const mw = curMapW(), mh = curMapH();
   cam.x = player.x - CANVAS_SIZE/2 + TILE/2;
   cam.y = player.y - CANVAS_SIZE/2 + TILE/2;
-  cam.x = Math.max(0, Math.min(cam.x, MAP_W*TILE - CANVAS_SIZE));
-  cam.y = Math.max(0, Math.min(cam.y, MAP_H*TILE - CANVAS_SIZE));
+  cam.x = Math.max(0, Math.min(cam.x, mw*TILE - CANVAS_SIZE));
+  cam.y = Math.max(0, Math.min(cam.y, mh*TILE - CANVAS_SIZE));
 }
 
 // ============================================================
@@ -828,7 +978,103 @@ let npcs = [
     ],
     met: false, facingPlayer: false, requestId: null,
   },
+  {
+    id:'messenger', name:'Royal Messenger', role:"King's Envoy",
+    tx:14, ty:11, // on the road, just south of the castle gate
+    color: {body:'#8b1a1a', hair:'#2a1a08'},
+    firstLine: "My lord. His Majesty the King summons you to Versailles. You are... expected. The court has remarked upon your absence — and the court has a long memory.",
+    idleLines: ["The King does not ask twice, my lord."],
+    met: false, facingPlayer: false, requestId: null,
+    active: false, summon: true,
+  },
+  {
+    id:'intendant', name:'Intendant Moreau', role:"King's Administrator",
+    tx:15, ty:11,
+    color: {body:'#2a1a3a', hair:'#1a1a1a'},
+    firstLine: "Your estate functions within acceptable parameters, my lord.",
+    idleLines: [
+      "Grain stores: nominal. Mood: stable. Complaints: seven, all noted.",
+      "The peasants ask when you return, my lord. I tell them: soon. Is that accurate?",
+      "Your estate functions within acceptable parameters. The King is satisfied.",
+      "I have recorded everything in your absence. The ledgers do not lie, my lord. They merely accumulate."
+    ],
+    met: false, facingPlayer: false, requestId: null,
+    active: false,
+  },
 ];
+const messengerNpc = npcs.find(n => n.id === 'messenger');
+const intendantNpc = npcs.find(n => n.id === 'intendant');
+
+// ============================================================
+// COURTIERS (at Versailles)
+// ============================================================
+const COURTIER_DEFS = [
+  {id:'bourbon',     name:'Duc de Bourbon',          status:82, influence:70, tx:10, ty:4, color:{body:'#1a2a6a',hair:'#f4f0e4'}},
+  {id:'sevigne',     name:'Marquise de Sévigné',     status:75, influence:45, tx:14, ty:3, color:{body:'#6a1a4a',hair:'#f4f0e4'}},
+  {id:'toulouse',    name:'Comte de Toulouse',       status:68, influence:80, tx:8,  ty:5, color:{body:'#1a4a2a',hair:'#f4f0e4'}},
+  {id:'maintenon',   name:'Baronne de Maintenon',    status:60, influence:85, tx:16, ty:4, color:{body:'#4a3a1a',hair:'#f4f0e4'}},
+  {id:'lorraine',    name:'Chevalier de Lorraine',   status:55, influence:50, tx:12, ty:6, color:{body:'#2a1a4a',hair:'#f4f0e4'}},
+  {id:'turenne',     name:'Vicomte de Turenne',      status:45, influence:35, tx:9,  ty:7, color:{body:'#3a2a1a',hair:'#d8c090'}},
+  {id:'longueville', name:'Duchesse de Longueville', status:38, influence:25, tx:15, ty:6, color:{body:'#5a1a3a',hair:'#d8c090'}},
+  {id:'pointis',     name:'Baron de Pointis',        status:22, influence:15, tx:11, ty:7, color:{body:'#3a3a2a',hair:'#d8c090'}},
+];
+let courtiers = COURTIER_DEFS.map(c => ({...c, color:{...c.color}, met:false, facingPlayer:false, isCourtier:true}));
+
+function resetCourtiers() {
+  courtiers = COURTIER_DEFS.map(c => ({...c, color:{...c.color}, met:false, facingPlayer:false, isCourtier:true}));
+}
+
+// Each court day the salons re-form: the highest-status courtiers gather in the
+// prime salon nearest the throne; lesser ranks orbit the fringes. Whom you choose
+// to stand among is the whole game.
+function redistributeCourtiers() {
+  // Three salons in the Hall of Mirrors, prime salon centre-front near the throne
+  const salons = [
+    [ [11,4],[12,4],[10,5],[13,5],[11,6] ],   // prime (centre)
+    [ [7,4],[8,5],[6,5],[8,3] ],               // left salon
+    [ [16,4],[17,5],[15,5],[17,3] ],           // right salon
+  ];
+  const sorted = [...courtiers].sort((a,b)=>b.status-a.status);
+  // Top tier → prime salon, then alternate the rest between the side salons
+  const slots = { 0:[...salons[0]], 1:[...salons[1]], 2:[...salons[2]] };
+  let sideToggle = 1;
+  sorted.forEach((c, i) => {
+    let salon;
+    if (c.status >= 60 && slots[0].length) salon = 0;
+    else { salon = sideToggle; sideToggle = sideToggle === 1 ? 2 : 1; if (!slots[salon].length) salon = slots[1].length ? 1 : (slots[2].length ? 2 : 0); }
+    if (!slots[salon].length) salon = [0,1,2].find(s=>slots[s].length);
+    if (salon === undefined) return;
+    const [tx,ty] = slots[salon].shift();
+    c.tx = tx; c.ty = ty;
+  });
+}
+
+// Courtier dialogue keyed to the gap between their status and the player's
+function courtierLine(c) {
+  const gap = c.status - state.courtStatus;
+  if (gap > 20) {
+    // condescending
+    return [
+      "You must be the provincial lord one hears so little about. How... rustic of you to attend.",
+      "I confess I cannot place your family. No matter. Few can.",
+      "Do enjoy the gardens. They are, I am told, much like the countryside — only arranged.",
+    ];
+  } else if (gap < -20) {
+    // deferential
+    return [
+      "My lord, your counsel would honour me. One sees at once you are a man of substance.",
+      "I had hoped to be presented to you. Your standing here is the talk of the salon.",
+      "Might I walk with you a while? A man rises by the company he keeps.",
+    ];
+  } else {
+    // cordial / peer
+    return [
+      "The gardens are lovely this season, are they not? One must be seen admiring them.",
+      "The King dined late again. Those who waited were noticed. Those who did not... were also noticed.",
+      "We are all of us mirrors here, my lord. We reflect whoever stands nearest.",
+    ];
+  }
+}
 
 // ============================================================
 // REQUEST POOL
@@ -1160,6 +1406,26 @@ function talkToNpc(npc) {
   if (dialogueOpen) return;
   state.npcsSpokenToday.add(npc.id);
 
+  // Courtiers at Versailles — spending a block of the day
+  if (npc.isCourtier) {
+    talkToCourtier(npc);
+    return;
+  }
+
+  // Royal Messenger — the summons
+  if (npc.id === 'messenger') {
+    npc.met = true;
+    openDialogue(npc, npc.summonsSeen ? "The King still waits, my lord. Will you go?" : npc.firstLine, [
+      {text:'Make the journey', action:()=>{ closeDialogue(); travelToCourtTransition(); }},
+      {text:'I must stay here', action:()=>{
+        npc.summonsSeen = true;
+        closeDialogue();
+        showPopup('The Envoy', "The Messenger's face hardens. \"The King does not forget, my lord. Every day you linger, his memory of you... dims.\"", null);
+      }}
+    ]);
+    return;
+  }
+
   // Check if NPC has an active request
   const req = state.activeRequests.find(r => r.npcId === npc.id);
   if (req) {
@@ -1193,12 +1459,36 @@ function talkToNpc(npc) {
     }
   }
 
-  // Henri easter egg — simulation musings after 3+ visits
+  // Henri easter egg — simulation musings after 2+ visits
   if (npc.id === 'henri' && npc.met) {
+    // Post-summons, before the sim arc kicks in, Henri muses on Paris
+    if (state.messengerArrived && (state.npcFlags.henriTalks || 0) < 2) {
+      state.npcFlags.henriTalks = (state.npcFlags.henriTalks || 0) + 1;
+      openDialogue(npc, "Paris, my lord? I hear it is... very large. I cannot picture it. I cannot picture anywhere but this field.", [{text:'Farewell', action:closeDialogue}]);
+      return;
+    }
     state.npcFlags.henriTalks = (state.npcFlags.henriTalks || 0) + 1;
     if (state.npcFlags.henriTalks >= 2) {
       const idx = Math.min(state.npcFlags.henriTalks - 2, HENRI_SIM_LINES.length - 1);
       openDialogue(npc, HENRI_SIM_LINES[idx], [{text:'...I am not sure, Henri.', action:closeDialogue}, {text:'Perhaps you are right.', action:closeDialogue}]);
+      return;
+    }
+  }
+
+  // Marie remarks on the King's administrator once he is installed
+  if (npc.id === 'marie' && npc.met && state.intendantInstalled && Math.random() < 0.6) {
+    openDialogue(npc, "The King's man counts everything now, my lord. The grain, the children, the days you are gone. He writes it all down. He does not smile.", [{text:'Farewell', action:closeDialogue}]);
+    return;
+  }
+
+  // Post-summons flavour from the village elders
+  if (npc.met && state.messengerArrived && !state.summonsAccepted && Math.random() < 0.6) {
+    if (npc.id === 'thomas') {
+      openDialogue(npc, "Ignoring a royal summons is not courage, my lord. It is ruin. Your father knew when to bow.", [{text:'Farewell', action:closeDialogue}]);
+      return;
+    }
+    if (npc.id === 'gaston') {
+      openDialogue(npc, "Even the Church bows to Versailles, my lord. Even God's servants attend when the King calls.", [{text:'Farewell', action:closeDialogue}]);
       return;
     }
   }
@@ -1215,6 +1505,58 @@ function talkToNpc(npc) {
     text = npc.idleLines[Math.floor(Math.random() * npc.idleLines.length)];
   }
   openDialogue(npc, text, [{text:'Farewell', action:closeDialogue}]);
+}
+
+// ============================================================
+// COURTIER INTERACTION & TIME BLOCKS
+// ============================================================
+function talkToCourtier(c) {
+  c.met = true;
+  const lines = courtierLine(c);
+  const text = lines[Math.floor(Math.random() * lines.length)];
+  if (state.blocksUsedToday >= 4) {
+    openDialogue(c, text + "\n\n(The day at court is spent. You have no more time to give.)", [{text:'Withdraw', action:closeDialogue}]);
+    return;
+  }
+  openDialogue(c, text, [
+    {text:'Spend the hour here', hint:'uses 1 of 4 blocks', action:()=>{ closeDialogue(); spendBlock(c); }},
+    {text:'Move on', action:closeDialogue}
+  ]);
+}
+
+// A "block" is a quarter of the courtly day spent in someone's company.
+function spendBlock(c) {
+  state.blocksUsedToday++;
+  // Everyone within 3 tiles of the chosen courtier is part of the circle
+  const near = courtiers.filter(o => {
+    const dx = o.tx - c.tx, dy = o.ty - c.ty;
+    return Math.sqrt(dx*dx + dy*dy) <= 3;
+  });
+  if (!near.includes(c)) near.push(c);
+  applyStatusAveraging(near);
+  updateHUD();
+  if (state.blocksUsedToday >= 4) {
+    endCourtDay();
+  } else {
+    state.dayFlash = { text: 'Block ' + state.blocksUsedToday + ' of 4 spent', timer: 1600 };
+  }
+}
+
+// Status flows toward the mean of present company. No explanation is given.
+function applyStatusAveraging(group) {
+  const all = [...group.map(c=>c.status), state.courtStatus];
+  const mean = all.reduce((s,v)=>s+v,0) / all.length;
+  for (let c of group) {
+    const gap = mean - c.status;
+    if (Math.abs(gap) < 0.0001) continue;
+    const move = Math.sign(gap) * Math.max(1, Math.abs(gap) * 0.1);
+    c.status = Math.max(5, Math.min(99, Math.round(c.status + move)));
+  }
+  const pgap = mean - state.courtStatus;
+  if (Math.abs(pgap) >= 0.0001) {
+    const pmove = Math.sign(pgap) * Math.max(1, Math.abs(pgap) * 0.1);
+    state.courtStatus = Math.max(5, Math.min(99, Math.round(state.courtStatus + pmove)));
+  }
 }
 
 // ============================================================
@@ -1253,12 +1595,41 @@ function applyStats(delta) {
 }
 
 function updateHUD() {
-  document.getElementById('hud-day').textContent = 'Day '+state.day+' — '+SEASONS[state.season];
+  const atCourt = state.currentWorld === 'court';
+  if (atCourt) {
+    document.getElementById('hud-day').textContent = 'Versailles — Block '+Math.min(state.blocksUsedToday+1,4)+' / 4';
+  } else {
+    document.getElementById('hud-day').textContent = 'Day '+state.day+' — '+SEASONS[state.season];
+  }
   document.getElementById('val-money').textContent = '⚙ '+state.money;
   document.getElementById('val-trust').textContent = state.trust;
   document.getElementById('val-estate').textContent = state.estate;
   document.getElementById('bar-trust').style.width  = state.trust + '%';
   document.getElementById('bar-estate').style.width = state.estate + '%';
+
+  // Royal Favor — appears once the messenger has come
+  const favEl = document.getElementById('hud-favor');
+  if (state.messengerArrived) {
+    favEl.style.display = '';
+    document.getElementById('val-favor').textContent = state.favor;
+    document.getElementById('bar-favor').style.width = state.favor + '%';
+  } else {
+    favEl.style.display = 'none';
+  }
+
+  // Court standing — appears only at court
+  const stEl = document.getElementById('hud-status');
+  if (atCourt) {
+    stEl.style.display = '';
+    document.getElementById('val-status').textContent = state.courtStatus;
+    document.getElementById('bar-status').style.width = state.courtStatus + '%';
+  } else {
+    stEl.style.display = 'none';
+  }
+
+  // Fief bars get a "FIEF:" prefix while you are away at court
+  document.getElementById('label-trust').textContent  = atCourt ? 'FIEF: Trust' : 'Peasant Trust';
+  document.getElementById('label-estate').textContent = atCourt ? 'FIEF: Estate' : 'Estate Output';
 }
 
 // ============================================================
@@ -1293,6 +1664,19 @@ function endDay() {
   state.season = Math.floor(((state.day - 1) / 7) % 4);
   updateCropTiles();
 
+  // The summons arrives on Day 8
+  if (state.day >= 8 && !state.messengerArrived) {
+    state.messengerArrived = true;
+    messengerNpc.active = true;
+    messengerNpc.met = false;
+    showPopup('A Rider at the Gate', "A rider in royal livery waits on the road below the castle. His tabard bears the King's arms. He has come a long way, and he does not look like a man who enjoys waiting.", null);
+  }
+
+  // Royal Favor erodes each day you remain at the fief after the summons
+  if (state.messengerArrived) {
+    state.favor = Math.max(0, state.favor - 3);
+  }
+
   // Generate new requests
   generateRequests();
 
@@ -1313,7 +1697,9 @@ function endDay() {
 }
 
 function checkGameOver() {
-  if (state.trust <= 0) {
+  if (state.favor <= 0 && state.messengerArrived) {
+    triggerGameOver("The King has forgotten your name. Your title is stripped, your lands reassigned to a more attentive man. The court moves on without a backward glance.");
+  } else if (state.trust <= 0) {
     triggerGameOver("A rebellion consumes the fief. The people rose up against a lord they never knew.");
   } else if (state.estate <= 0) {
     triggerGameOver("Your treasury collapses. Without output, the fief crumbles to ruin.");
@@ -1326,6 +1712,140 @@ function triggerGameOver(reason) {
   state.gameOver = true;
   document.getElementById('gameover-reason').textContent = reason;
   document.getElementById('gameover-screen').style.display = 'flex';
+}
+
+// ============================================================
+// TRAVEL — between the fief and Versailles (3-day journey)
+// ============================================================
+function travelToCourtTransition() {
+  state.travelScreen = { phase:'to_court', timer:3000, total:3000 };
+}
+function travelToFiefTransition() {
+  state.travelScreen = { phase:'to_fief', timer:3000, total:3000 };
+}
+
+function arriveAtCourt() {
+  state.summonsAccepted = true;
+  messengerNpc.active = false;
+  state.currentWorld = 'court';
+  state.blocksUsedToday = 0;
+  redistributeCourtiers();
+  // The journey itself costs three days away from the fief
+  state.daysAwayFromFief += 3;
+  applyFiefSimDays(3);
+  // Arriving promptly restores some favor
+  state.favor = Math.min(100, state.favor + 15);
+  player.x = 11 * TILE + 4;
+  player.y = 9 * TILE;
+  updateHUD();
+  updateCamera();
+  showPopup('Versailles', "The carriage delivers you to the forecourt of the palace. Mirrors. Gold. A hundred faces that turn to measure you, then turn away. Here, presence is the only currency. Spend your days among the right people.", ()=>{ checkGameOver(); });
+}
+
+function arriveAtFief() {
+  state.currentWorld = 'fief';
+  player.x = 14 * TILE + 4;
+  player.y = 12 * TILE;
+  updateHUD();
+  updateCamera();
+  // Return reaction scaled to how long you were gone
+  const away = state.daysAwayFromFief;
+  let speaker, line;
+  if (away < 5) {
+    speaker = npcs.find(n=>n.id==='henri');
+    line = "My lord! You return from Versailles. The fields missed your shadow on them.";
+  } else if (away < 10) {
+    speaker = npcs.find(n=>n.id==='thomas');
+    line = "You were gone a while, my lord. The village... managed. We always do.";
+  } else if (away < 20) {
+    speaker = npcs.find(n=>n.id==='marie');
+    line = "My lord. You came back. We had begun to wonder if Versailles had kept you.";
+  } else {
+    speaker = npcs.find(n=>n.id==='thomas');
+    line = "My lord.";
+  }
+  showPopup(speaker.name, line, ()=>{ checkGameOver(); });
+}
+
+// Apply the fief's background simulation for n days passing while you are away
+function applyFiefSimDays(n) {
+  for (let i = 0; i < n; i++) {
+    const income = Math.floor(state.estate / 10);
+    state.money += income;
+    state.estate = Math.max(0, state.estate - 2);
+    state.trust  = Math.max(0, state.trust - 1);
+    if (state.intendantInstalled) {
+      state.estate = Math.min(100, state.estate + 1);
+      state.money += 2;
+      state.trust  = Math.max(0, state.trust - 2);
+    }
+  }
+}
+
+// ============================================================
+// COURT DAY CYCLE
+// ============================================================
+function endCourtDay() {
+  state.courtDaysSpent++;
+  state.daysAwayFromFief++;
+
+  // Fief background simulation for the day you spent away
+  const fiefIncome = Math.floor(state.estate / 10);
+  const estateBefore = state.estate, trustBefore = state.trust, moneyBefore = state.money;
+  state.money  += fiefIncome;
+  state.estate  = Math.max(0, state.estate - 2);
+  state.trust   = Math.max(0, state.trust - 1);
+  if (state.intendantInstalled) {
+    state.estate = Math.min(100, state.estate + 1);
+    state.money += 2;
+    state.trust  = Math.max(0, state.trust - 2);
+  }
+
+  // Attending court restores favor
+  state.favor = Math.min(100, state.favor + 5);
+
+  state.courtDaySummary = {
+    statusSnapshot: courtiers.map(c => ({name:c.name, status:c.status})),
+    playerStatus: state.courtStatus,
+    fief: {
+      estate: state.estate - estateBefore,
+      trust: state.trust - trustBefore,
+      money: state.money - moneyBefore,
+    },
+    favorChange: 5,
+    intendant: state.intendantInstalled,
+  };
+  updateHUD();
+  checkGameOver();
+}
+
+// Continue the court day cycle after the summary is dismissed
+function afterCourtSummary() {
+  state.courtDaySummary = null;
+  // The Royal Intendant arrives before the 3rd day at court
+  if (state.courtDaysSpent === 2 && !state.intendantMet) {
+    state.intendantMet = true;
+    state.intendantInstalled = true;
+    intendantNpc.active = true;
+    intendantNpc.met = false;
+    if (state.npcFlags.henriLeave) {
+      showPopup('Intendant Moreau', "A grey official bows precisely. \"My lord. By royal decree I am assigned to administer your fief in your absence. I note one Henri was granted leave to travel — irregular, but recorded. You will find my reports thorough.\"", askStayOrReturn);
+    } else {
+      showPopup('Intendant Moreau', "A grey official bows precisely. \"My lord. By royal decree I am assigned to administer your fief in your absence. You will find my reports... thorough. The King prefers his lords unburdened by detail.\"", askStayOrReturn);
+    }
+    return;
+  }
+  askStayOrReturn();
+}
+
+function askStayOrReturn() {
+  state.blocksUsedToday = 0;
+  updateHUD();
+  openDialogue({name:'The Day Turns', role:''},
+    "Another day at court? Or do your people need you?", [
+    {text:'Stay another day', action:()=>{ redistributeCourtiers(); closeDialogue(); }},
+    {text:'Return to the fief', action:()=>{ closeDialogue(); travelToFiefTransition(); }}
+  ]);
 }
 
 function generateRequests() {
@@ -1567,6 +2087,125 @@ function drawTile(t, sx, sy, animFrame, season) {
     ctx.lineWidth = 1;
     ctx.strokeRect(sx+6, sy+6, TILE-12, TILE-12);
   }
+  // ---- Court tile details ----
+  if (t === T.PARQUET) {
+    ctx.strokeStyle = 'rgba(90,50,10,0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy); ctx.lineTo(sx+TILE, sy+TILE);
+    ctx.moveTo(sx+TILE, sy); ctx.lineTo(sx, sy+TILE);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,220,150,0.12)';
+    ctx.strokeRect(sx+1, sy+1, TILE-2, TILE-2);
+  }
+  if (t === T.MARBLE_FLOOR) {
+    ctx.strokeStyle = 'rgba(140,140,150,0.25)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(sx+0.5, sy+0.5, TILE-1, TILE-1);
+  }
+  if (t === T.MARBLE_WALL) {
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillRect(sx, sy, TILE, 4);
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.fillRect(sx, sy+TILE-4, TILE, 4);
+  }
+  if (t === T.MIRROR_WALL) {
+    // tall arched mirror with a faint sheen
+    ctx.fillStyle = '#c8dcec';
+    ctx.fillRect(sx+5, sy+4, TILE-10, TILE-8);
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    const sh = (animFrame % 4) * 3;
+    ctx.fillRect(sx+8+sh, sy+6, 3, TILE-12);
+    ctx.strokeStyle = '#d4a020';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(sx+5, sy+4, TILE-10, TILE-8);
+  }
+  if (t === T.GOLD_TRIM) {
+    // gilded column
+    ctx.fillStyle = '#f0d060';
+    ctx.fillRect(sx+12, sy, 16, TILE);
+    ctx.fillStyle = '#b88010';
+    ctx.fillRect(sx+12, sy, 4, TILE);
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillRect(sx+22, sy, 3, TILE);
+  }
+  if (t === T.GRAVEL) {
+    ctx.fillStyle = 'rgba(0,0,0,0.06)';
+    for (let i = 0; i < 6; i++) {
+      ctx.fillRect(sx + ((i*13+7)%TILE), sy + ((i*17+5)%TILE), 2, 2);
+    }
+  }
+  if (t === T.GARDEN_BED) {
+    // clipped lawn with small flowers
+    ctx.fillStyle = '#3a7a2a';
+    ctx.fillRect(sx+3, sy+3, TILE-6, TILE-6);
+    const fc = ['#f0e0e0','#f0c040','#e07090'];
+    for (let i = 0; i < 3; i++) {
+      ctx.fillStyle = fc[i];
+      ctx.fillRect(sx+8+i*9, sy+10+((i*7)%14), 3, 3);
+    }
+  }
+  if (t === T.HEDGE_FORMAL) {
+    ctx.fillStyle = '#2a6a2a';
+    ctx.fillRect(sx+1, sy+1, TILE-2, TILE-2);
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    for (let i = 4; i < TILE; i += 8) ctx.fillRect(sx, sy+i, TILE, 1);
+  }
+  if (t === T.TOPIARY) {
+    // a clipped cone
+    ctx.fillStyle = '#1a4a1a';
+    ctx.beginPath();
+    ctx.moveTo(sx+TILE/2, sy+3);
+    ctx.lineTo(sx+TILE-6, sy+TILE-6);
+    ctx.lineTo(sx+6, sy+TILE-6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#3a7a2a';
+    ctx.beginPath();
+    ctx.moveTo(sx+TILE/2, sy+6);
+    ctx.lineTo(sx+TILE/2+6, sy+TILE-8);
+    ctx.lineTo(sx+TILE/2-2, sy+TILE-8);
+    ctx.closePath();
+    ctx.fill();
+  }
+  if (t === T.FOUNTAIN) {
+    // basin + animated jet
+    ctx.fillStyle = '#8a98b0';
+    ctx.fillRect(sx, sy, TILE, TILE);
+    ctx.fillStyle = '#3a78c8';
+    ctx.beginPath();
+    ctx.arc(sx+TILE/2, sy+TILE/2, TILE*0.42, 0, Math.PI*2);
+    ctx.fill();
+    const r = (animFrame % 3) + 2;
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(sx+TILE/2, sy+TILE/2, TILE*0.18 + r, 0, Math.PI*2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.fillRect(sx+TILE/2-1, sy+TILE/2-8-r, 2, 8+r);
+  }
+  if (t === T.CANAL) {
+    const shift = (animFrame % 4) * 3;
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
+    ctx.fillRect(sx+2, sy+((8+shift)%TILE), TILE-4, 2);
+    ctx.fillRect(sx+6, sy+((22+shift)%TILE), TILE-12, 2);
+  }
+  if (t === T.ARCH) {
+    ctx.fillStyle = '#7a6850';
+    ctx.fillRect(sx+2, sy, 6, TILE);
+    ctx.fillRect(sx+TILE-8, sy, 6, TILE);
+    ctx.fillStyle = '#c8b890';
+    ctx.fillRect(sx+2, sy, TILE-4, 8);
+  }
+  if (t === T.THRONE) {
+    // distant dais — the King, glimpsed
+    ctx.fillStyle = '#9a2020';
+    ctx.fillRect(sx+6, sy+4, TILE-12, TILE-6);
+    ctx.fillStyle = '#f0d060';
+    ctx.fillRect(sx+10, sy+2, TILE-20, 6);
+    ctx.fillRect(sx+TILE/2-2, sy+8, 4, TILE-12);
+  }
 }
 
 function drawNpc(npc, sx, sy, animFrame) {
@@ -1659,6 +2298,193 @@ function drawPlayer(sx, sy, animFrame, moving) {
   ctx.fillRect(sx+22, sy+14, 3, 16);
 }
 
+function drawCourtier(c, sx, sy, animFrame) {
+  const col = c.color;
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(sx+16, sy+30, 8, 3, 0, 0, Math.PI*2);
+  ctx.fill();
+  // Elaborate coat — wider for the high-status
+  const grand = c.status >= 60;
+  ctx.fillStyle = col.body;
+  ctx.fillRect(sx+8, sy+14, 16, 16);
+  // lace/gold trim
+  ctx.fillStyle = grand ? '#f0d060' : '#c8c0b0';
+  ctx.fillRect(sx+15, sy+14, 2, 16);
+  ctx.fillStyle = '#f4f0e0';
+  ctx.fillRect(sx+13, sy+15, 6, 3); // cravat
+  // Head
+  ctx.fillStyle = '#e8c090';
+  ctx.fillRect(sx+11, sy+6, 10, 10);
+  // Powdered wig
+  ctx.fillStyle = col.hair;
+  ctx.fillRect(sx+9, sy+3, 14, 8);
+  ctx.fillRect(sx+9, sy+9, 3, 8);   // wig curl L
+  ctx.fillRect(sx+20, sy+9, 3, 8);  // wig curl R
+  // Eyes
+  ctx.fillStyle = '#1a1010';
+  ctx.fillRect(sx+13, sy+10, 2, 2);
+  ctx.fillRect(sx+17, sy+10, 2, 2);
+  // Legs (stockings)
+  ctx.fillStyle = '#e0d8c8';
+  ctx.fillRect(sx+10, sy+28, 5, 6);
+  ctx.fillRect(sx+17, sy+28, 5, 6);
+
+  // Status chip floating above
+  const s = Math.round(c.status);
+  let chipCol = s >= 60 ? '#d4a020' : (s >= 40 ? '#a0a0b0' : '#6a6060');
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(sx+2, sy-12, 28, 11);
+  ctx.fillStyle = chipCol;
+  ctx.fillRect(sx+2, sy-12, 28, 2);
+  ctx.fillStyle = '#f4ecd8';
+  ctx.font = '7px "Press Start 2P", monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(String(s), sx+16, sy-3);
+  ctx.textAlign = 'left';
+}
+
+// ---- Court renderer ----
+function renderCourt(dt) {
+  ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  const tileX0 = Math.floor(cam.x / TILE);
+  const tileY0 = Math.floor(cam.y / TILE);
+  const offX = -(cam.x % TILE);
+  const offY = -(cam.y % TILE);
+
+  for (let ty = 0; ty <= VP; ty++) {
+    for (let tx = 0; tx <= VP; tx++) {
+      const mapX = tileX0 + tx, mapY = tileY0 + ty;
+      const t = getCourtTile(mapX, mapY);
+      drawTile(t, offX + tx*TILE, offY + ty*TILE, state.animFrame, 0);
+    }
+  }
+
+  // Courtiers
+  for (let c of courtiers) {
+    const sx = c.tx * TILE - cam.x;
+    const sy = c.ty * TILE - cam.y;
+    if (sx > -TILE && sx < CANVAS_SIZE && sy > -TILE && sy < CANVAS_SIZE) {
+      drawCourtier(c, sx, sy, state.animFrame);
+      const dx = c.tx*TILE - player.x, dy = c.ty*TILE - player.y;
+      if (Math.sqrt(dx*dx+dy*dy) < TILE*2.0 && state.blocksUsedToday < 4) {
+        ctx.fillStyle = 'rgba(255,255,150,0.85)';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('▲', sx+16, sy-16);
+        ctx.textAlign = 'left';
+      }
+    }
+  }
+
+  // Player
+  drawPlayer(player.x - cam.x, player.y - cam.y, player.walkFrame, player.moving);
+
+  // Block progress bar (4 segments) at the very top
+  const segW = CANVAS_SIZE / 4;
+  for (let i = 0; i < 4; i++) {
+    ctx.fillStyle = i < state.blocksUsedToday ? '#d4a020' : 'rgba(0,0,0,0.5)';
+    ctx.fillRect(i*segW+1, 0, segW-2, 6);
+  }
+
+  // Day flash
+  drawDayFlash();
+}
+
+function drawDayFlash() {
+  if (state.dayFlash && state.dayFlash.timer > 0) {
+    const alpha = Math.min(1, state.dayFlash.timer / 400);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = 'rgba(20,14,4,0.82)';
+    ctx.fillRect(CANVAS_SIZE/2 - 160, CANVAS_SIZE/2 - 18, 320, 36);
+    ctx.strokeStyle = '#8b6a2a';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(CANVAS_SIZE/2 - 160, CANVAS_SIZE/2 - 18, 320, 36);
+    ctx.fillStyle = '#f0c840';
+    ctx.font = '8px "Press Start 2P", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(state.dayFlash.text, CANVAS_SIZE/2, CANVAS_SIZE/2 + 4);
+    ctx.textAlign = 'left';
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ---- Travel transition overlay ----
+function renderTravel() {
+  ctx.fillStyle = '#08060a';
+  ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  const ts = state.travelScreen;
+  const heading = ts.phase === 'to_court' ? 'THREE DAYS TO VERSAILLES' : 'THREE DAYS HOME';
+  ctx.fillStyle = '#e0a030';
+  ctx.font = '12px "Press Start 2P", monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(heading, CANVAS_SIZE/2, CANVAS_SIZE/2 - 10);
+  // animated dots
+  const dots = '.'.repeat(1 + Math.floor((ts.total - ts.timer) / 500) % 4);
+  ctx.fillStyle = '#a8885a';
+  ctx.font = '10px "Press Start 2P", monospace';
+  ctx.fillText(dots, CANVAS_SIZE/2, CANVAS_SIZE/2 + 20);
+  const sub = ts.phase === 'to_court'
+    ? 'The fief shrinks behind you.'
+    : 'The court fades. The fields grow near.';
+  ctx.fillStyle = '#6a5a40';
+  ctx.font = '6px "Press Start 2P", monospace';
+  ctx.fillText(sub, CANVAS_SIZE/2, CANVAS_SIZE/2 + 50);
+  ctx.textAlign = 'left';
+}
+
+// ---- Court day summary overlay ----
+function renderCourtSummary() {
+  const s = state.courtDaySummary;
+  ctx.fillStyle = 'rgba(8,6,12,0.92)';
+  ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#f0c840';
+  ctx.font = '10px "Press Start 2P", monospace';
+  ctx.fillText('THE DAY AT COURT', 40, 50);
+
+  // Left panel — court standing
+  ctx.fillStyle = '#d4a020';
+  ctx.font = '7px "Press Start 2P", monospace';
+  ctx.fillText('AT VERSAILLES', 40, 90);
+  ctx.fillStyle = '#cfc4a8';
+  ctx.font = '6px "Press Start 2P", monospace';
+  let y = 112;
+  ctx.fillText('Your standing: ' + s.playerStatus, 40, y); y += 18;
+  for (let cs of s.statusSnapshot) {
+    const nm = cs.name.length > 18 ? cs.name.slice(0,17)+'…' : cs.name;
+    ctx.fillText(nm + ': ' + cs.status, 40, y);
+    y += 14;
+  }
+
+  // Right panel — the fief
+  ctx.fillStyle = '#80c060';
+  ctx.font = '7px "Press Start 2P", monospace';
+  ctx.fillText('YOUR FIEF', 360, 90);
+  ctx.fillStyle = '#cfc4a8';
+  ctx.font = '6px "Press Start 2P", monospace';
+  y = 112;
+  const fmt = (n) => (n>=0?'+':'') + n;
+  ctx.fillText('Estate: ' + fmt(s.fief.estate), 360, y); y += 18;
+  ctx.fillText('Trust:  ' + fmt(s.fief.trust), 360, y); y += 18;
+  ctx.fillText('Income: ' + fmt(s.fief.money) + 'g', 360, y); y += 18;
+  ctx.fillStyle = '#e0a030';
+  ctx.fillText('Royal Favor: +' + s.favorChange, 360, y); y += 24;
+  if (s.intendant) {
+    ctx.fillStyle = '#9a90b0';
+    ctx.fillText("Intendant Moreau", 360, y); y += 14;
+    ctx.fillText("administers in", 360, y); y += 14;
+    ctx.fillText("your absence.", 360, y);
+  }
+
+  ctx.fillStyle = '#f0c840';
+  ctx.font = '7px "Press Start 2P", monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Press SPACE to continue', CANVAS_SIZE/2, CANVAS_SIZE - 40);
+  ctx.textAlign = 'left';
+}
+
 function render(dt) {
   ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
@@ -1681,6 +2507,7 @@ function render(dt) {
 
   // Draw NPCs
   for (let npc of npcs) {
+    if (npc.active === false) continue; // messenger / intendant inactive
     const sx = npc.tx * TILE - cam.x;
     const sy = npc.ty * TILE - cam.y;
     if (sx > -TILE && sx < CANVAS_SIZE && sy > -TILE && sy < CANVAS_SIZE) {
@@ -1739,7 +2566,32 @@ function render(dt) {
 // UPDATE
 // ============================================================
 function update(dt) {
-  if (!state.gameStarted || state.gameOver || dialogueOpen || state.popupOpen) return;
+  if (!state.gameStarted || state.gameOver) return;
+
+  // Travel transition takes over everything
+  if (state.travelScreen) {
+    state.travelScreen.timer -= dt;
+    if (state.travelScreen.timer <= 0) {
+      const phase = state.travelScreen.phase;
+      state.travelScreen = null;
+      if (phase === 'to_court') arriveAtCourt();
+      else arriveAtFief();
+    }
+    return;
+  }
+
+  // Court day summary waits for SPACE/interact
+  if (state.courtDaySummary) {
+    if (interactPressed) {
+      interactPressed = false;
+      afterCourtSummary();
+    }
+    return;
+  }
+
+  if (dialogueOpen || state.popupOpen) return;
+
+  const atCourt = state.currentWorld === 'court';
 
   // Movement
   let dx = 0, dy = 0;
@@ -1769,7 +2621,7 @@ function update(dt) {
   const SLIP = 1.8; // nudge pixels when clipping a corner
 
   function solid(wx, wy) {
-    return isSolid(getTile(Math.floor(wx / TILE), Math.floor(wy / TILE)));
+    return isSolidW(getTileW(Math.floor(wx / TILE), Math.floor(wy / TILE)));
   }
 
   const nx = player.x + dx;
@@ -1806,55 +2658,77 @@ function update(dt) {
     else if (rightBlocked && !leftBlocked) player.x -= SLIP; // clip right → slip left
   }
 
-  player.x = Math.max(2*TILE, Math.min((MAP_W-2)*TILE, player.x));
-  player.y = Math.max(2*TILE, Math.min((MAP_H-2)*TILE, player.y));
+  player.x = Math.max(2*TILE, Math.min((curMapW()-2)*TILE, player.x));
+  player.y = Math.max(2*TILE, Math.min((curMapH()-2)*TILE, player.y));
 
   updateCamera();
 
-  // Day timer
-  state.dayTimer += dt;
-  // Tint: last 3 seconds darken
-  const timeLeft = getDayDuration() - state.dayTimer;
-  if (timeLeft < 3000) {
-    state.tintAlpha = 0.35 * (1 - timeLeft/3000);
-  } else if (state.dayTimer < 1000) {
-    state.tintAlpha = 0.35 * (1 - state.dayTimer/1000);
+  // Day timer — only the fief runs on a clock; court runs on time-blocks
+  if (!atCourt) {
+    state.dayTimer += dt;
+    const timeLeft = getDayDuration() - state.dayTimer;
+    if (timeLeft < 3000) {
+      state.tintAlpha = 0.35 * (1 - timeLeft/3000);
+    } else if (state.dayTimer < 1000) {
+      state.tintAlpha = 0.35 * (1 - state.dayTimer/1000);
+    } else {
+      state.tintAlpha = 0;
+    }
+    if (state.dayTimer >= getDayDuration()) {
+      state.dayTimer = 0;
+      endDay();
+    }
   } else {
     state.tintAlpha = 0;
   }
 
-  if (state.dayTimer >= getDayDuration()) {
-    state.dayTimer = 0;
-    endDay();
-  }
-
-  // NPC facing
-  for (let npc of npcs) {
-    const dx2 = player.x - npc.tx*TILE;
-    const dy2 = player.y - npc.ty*TILE;
-    npc.facingPlayer = Math.sqrt(dx2*dx2+dy2*dy2) < TILE*2.5;
+  // NPC facing (fief only)
+  if (!atCourt) {
+    for (let npc of npcs) {
+      const dx2 = player.x - npc.tx*TILE;
+      const dy2 = player.y - npc.ty*TILE;
+      npc.facingPlayer = Math.sqrt(dx2*dx2+dy2*dy2) < TILE*2.5;
+    }
   }
 
   // Interact
   if (interactPressed) {
     interactPressed = false;
-    // Find nearest NPC within 2 tiles
-    let best = null, bestDist = TILE * 2.5;
-    for (let npc of npcs) {
-      const dx2 = player.x - npc.tx*TILE;
-      const dy2 = player.y - npc.ty*TILE;
-      const d = Math.sqrt(dx2*dx2+dy2*dy2);
-      if (d < bestDist) { bestDist = d; best = npc; }
-    }
-    if (best) {
-      talkToNpc(best);
+    if (atCourt) {
+      // Find nearest courtier
+      let best = null, bestDist = TILE * 2.0;
+      for (let c of courtiers) {
+        const d = Math.hypot(player.x - c.tx*TILE, player.y - c.ty*TILE);
+        if (d < bestDist) { bestDist = d; best = c; }
+      }
+      if (best) talkToCourtier(best);
     } else {
-      // Check for sign
-      const px2 = Math.floor(player.x/TILE), py2 = Math.floor(player.y/TILE);
-      for (let [ox,oy] of [[0,0],[1,0],[0,1],[-1,0],[0,-1]]) {
-        if (getTile(px2+ox, py2+oy) === T.SIGN) {
-          openDialogue({name:'Road Sign', role:''}, "The road to Paris. You have no reason to go. Your people need you here.", [{text:'Turn back', action:closeDialogue}]);
-          break;
+      // Find nearest NPC within 2 tiles (skip inactive)
+      let best = null, bestDist = TILE * 2.5;
+      for (let npc of npcs) {
+        if (npc.active === false) continue;
+        const d = Math.hypot(player.x - npc.tx*TILE, player.y - npc.ty*TILE);
+        if (d < bestDist) { bestDist = d; best = npc; }
+      }
+      if (best) {
+        talkToNpc(best);
+      } else {
+        // Check for sign — the road out
+        const px2 = Math.floor(player.x/TILE), py2 = Math.floor(player.y/TILE);
+        for (let [ox,oy] of [[0,0],[1,0],[0,1],[-1,0],[0,-1]]) {
+          if (getTile(px2+ox, py2+oy) === T.SIGN) {
+            if (state.summonsAccepted) {
+              openDialogue({name:'Road Sign', role:''}, "The road to Versailles. The court expects you.", [
+                {text:'Make the journey', action:()=>{ closeDialogue(); travelToCourtTransition(); }},
+                {text:'Stay here', action:closeDialogue}
+              ]);
+            } else if (state.messengerArrived) {
+              openDialogue({name:'Road Sign', role:''}, "The road to Versailles. A King's rider waits at your gate. The court will not wait forever.", [{text:'Turn back', action:closeDialogue}]);
+            } else {
+              openDialogue({name:'Road Sign', role:''}, "The road to Paris. You have no reason to go. Your people need you here.", [{text:'Turn back', action:closeDialogue}]);
+            }
+            break;
+          }
         }
       }
     }
@@ -1879,7 +2753,15 @@ function gameLoop(ts) {
   state.lastTime = ts;
   if (state.gameStarted && !state.gameOver) {
     update(dt);
-    render(dt);
+    if (state.travelScreen) {
+      renderTravel();
+    } else if (state.courtDaySummary) {
+      renderCourtSummary();
+    } else if (state.currentWorld === 'court') {
+      renderCourt(dt);
+    } else {
+      render(dt);
+    }
   } else if (!state.gameStarted) {
     renderBackground();
   }
@@ -1908,9 +2790,22 @@ function resetGame() {
   state.brokedays=0; state.npcsSpokenToday=new Set(); state.dayTimer=0;
   state.activeRequests=[]; state.completedRequests=new Set(); state.npcFlags={};
   state.tintAlpha=0; state.popupQueue=[]; state.popupOpen=false; state.gameOver=false;
-  for (let npc of npcs) { npc.met=false; npc.requestId=null; if (npc.tutorialIdx !== undefined) npc.tutorialIdx=0; }
+  // Phase 2 reset
+  state.currentWorld='fief'; state.favor=30; state.courtStatus=30;
+  state.messengerArrived=false; state.summonsAccepted=false;
+  state.daysAwayFromFief=0; state.courtDaysSpent=0; state.blocksUsedToday=0;
+  state.intendantInstalled=false; state.intendantMet=false;
+  state.courtDaySummary=null; state.travelScreen=null;
+  for (let npc of npcs) {
+    npc.met=false; npc.requestId=null;
+    if (npc.tutorialIdx !== undefined) npc.tutorialIdx=0;
+    if (npc.id==='messenger' || npc.id==='intendant') npc.active=false;
+    if (npc.id==='messenger') npc.summonsSeen=false;
+  }
+  resetCourtiers();
   player.x=14*TILE+4; player.y=12*TILE;
   buildMap();
+  buildCourtMap();
   generateRequests();
   updateHUD();
   updateCamera();

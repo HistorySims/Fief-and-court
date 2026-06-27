@@ -799,6 +799,7 @@ let state = {
   courtDaySummary: null,    // overlay after a court day
   travelScreen: null,       // {phase, timer, total}
   croquet: null,            // croquet minigame state machine
+  shoot: null,              // shooting-party minigame state machine
 };
 
 const SEASONS = ['Spring','Summer','Autumn','Winter'];
@@ -1019,54 +1020,52 @@ const COURTIER_DEFS = [
   {id:'longueville', name:'Duchesse de Longueville', status:38, influence:25, tx:15, ty:6, color:{body:'#5a1a3a',hair:'#d8c090'}},
   {id:'pointis',     name:'Baron de Pointis',        status:22, influence:15, tx:11, ty:7, color:{body:'#3a3a2a',hair:'#d8c090'}},
 ];
-let courtiers = COURTIER_DEFS.map(c => ({...c, color:{...c.color}, met:false, facingPlayer:false, isCourtier:true}));
+let courtiers = COURTIER_DEFS.map(c => ({...c, color:{...c.color}, met:false, facingPlayer:false, isCourtier:true, activity:'hall', spot:'prime'}));
 
 function resetCourtiers() {
-  courtiers = COURTIER_DEFS.map(c => ({...c, color:{...c.color}, met:false, facingPlayer:false, isCourtier:true}));
+  courtiers = COURTIER_DEFS.map(c => ({...c, color:{...c.color}, met:false, facingPlayer:false, isCourtier:true, activity:'hall', spot:'prime'}));
 }
 
-// The gathering-places of the court. Each holds a cluster of courtiers.
-// The croquet lawn is out in the gardens; the rest are in the Hall of Mirrors.
+// The gathering-places of the court. Each holds a cluster of courtiers and an
+// activity: conversation in the Hall of Mirrors, croquet on the west lawn, and
+// a flintlock shooting party on the east ground (la chasse — the King's passion).
 const COURT_LOCATIONS = [
-  { id:'prime', lawn:false, spots:[ [11,4],[12,4],[10,5],[13,5],[11,6] ] }, // centre, near throne
-  { id:'left',  lawn:false, spots:[ [7,4],[8,5],[6,5],[8,3] ] },
-  { id:'right', lawn:false, spots:[ [16,4],[17,5],[15,5],[17,3] ] },
-  { id:'lawn',  lawn:true,  spots:[ [5,11],[7,11],[5,13],[7,13],[6,12] ] }, // the croquet lawn
+  { id:'prime', activity:'hall',    spots:[ [11,4],[12,4],[10,5],[13,5],[11,6] ] }, // centre, near throne
+  { id:'left',  activity:'hall',    spots:[ [7,4],[8,5],[6,5],[8,3] ] },
+  { id:'right', activity:'hall',    spots:[ [16,4],[17,5],[15,5],[17,3] ] },
+  { id:'lawn',  activity:'croquet', spots:[ [5,11],[7,11],[5,13],[7,13],[6,12] ] },  // west garden — croquet
+  { id:'butts', activity:'shoot',   spots:[ [15,11],[17,11],[19,11],[16,13],[18,13] ] }, // east garden — shooting party
 ];
 
 // Each court day the cliques re-form. The high-status set's "hot" gathering
-// alternates between the Hall of Mirrors and the croquet lawn — so every other
-// day, joining the cool set MEANS playing croquet. Lesser ranks spread across
-// every gathering, so the lawn always has company of *some* sort: you can always
-// play, the only question is who with.
+// rotates between the hall, the croquet lawn, and the shooting ground — so the
+// activity the cool set is doing changes day to day. Lesser ranks spread across
+// every gathering, so the outdoor grounds usually hold company of some sort:
+// you can almost always play — the only question is who with.
 function redistributeCourtiers() {
   const slots = COURT_LOCATIONS.map(l => l.spots.slice());
-  const idx = { prime:0, left:1, right:2, lawn:3 };
-  const placeAnywhere = (c) => {
-    for (let i = 0; i < slots.length; i++) if (slots[i].length) { const [tx,ty]=slots[i].shift(); c.tx=tx; c.ty=ty; return; }
-  };
+  const idOf = id => COURT_LOCATIONS.findIndex(l => l.id === id);
+  const place = (c, li) => { const [tx,ty]=slots[li].shift(); c.tx=tx; c.ty=ty; c.activity=COURT_LOCATIONS[li].activity; c.spot=COURT_LOCATIONS[li].id; };
+  const placeAnywhere = (c) => { for (let i=0;i<slots.length;i++) if (slots[i].length) { place(c,i); return; } };
   const sorted = [...courtiers].sort((a,b)=>b.status-a.status);
-  const hot = (state.courtDaysSpent % 2 === 0) ? idx.prime : idx.lawn;
+  const hotIds = ['prime','lawn','butts'];
+  const hot = idOf(hotIds[state.courtDaysSpent % hotIds.length]);
   // The high-status set chases the hot gathering
   for (const c of sorted.filter(c=>c.status>=60)) {
-    if (slots[hot].length) { const [tx,ty]=slots[hot].shift(); c.tx=tx; c.ty=ty; }
-    else placeAnywhere(c);
+    if (slots[hot].length) place(c, hot); else placeAnywhere(c);
   }
-  // Everyone else spreads round-robin so every gathering, lawn included, has bodies
-  const ring = [idx.prime, idx.left, idx.right, idx.lawn];
+  // Everyone else spreads round-robin so the grounds usually have bodies
+  const ring = COURT_LOCATIONS.map((_,i)=>i);
   let r = 0;
   for (const c of sorted.filter(c=>c.status<60)) {
     let placed = false;
     for (let t = 0; t < ring.length; t++) {
       const li = ring[(r++) % ring.length];
-      if (slots[li].length) { const [tx,ty]=slots[li].shift(); c.tx=tx; c.ty=ty; placed=true; break; }
+      if (slots[li].length) { place(c, li); placed=true; break; }
     }
     if (!placed) placeAnywhere(c);
   }
 }
-
-// Is this courtier currently out on the croquet lawn (in the gardens)?
-function onLawn(c) { return c.ty >= 10; }
 
 // Courtier dialogue keyed to the gap between their status and the player's
 function courtierLine(c) {
@@ -1537,8 +1536,9 @@ function talkToCourtier(c) {
     openDialogue(c, text + "\n\n(The day at court is spent. You have no more time to give.)", [{text:'Withdraw', action:closeDialogue}]);
     return;
   }
-  const lawn = onLawn(c);
-  const verb = lawn ? 'Join the croquet' : 'Spend the hour here';
+  const verb = c.activity === 'croquet' ? 'Join the croquet'
+             : c.activity === 'shoot'   ? 'Join the shooting party'
+             : 'Spend the hour here';
   openDialogue(c, text, [
     {text:verb, hint:'uses 1 of 4 blocks', action:()=>{ closeDialogue(); spendBlock(c); }},
     {text:'Move on', action:closeDialogue}
@@ -1560,13 +1560,10 @@ function circleAround(c) {
 // A "block" is a quarter of the courtly day spent in someone's company.
 function spendBlock(c) {
   const near = circleAround(c);
-  // Out on the lawn, the hour is spent at croquet; in the hall, in conversation.
-  if (onLawn(c)) {
-    startCroquet(c, near);
-  } else {
-    applyStatusAveraging(near);
-    finishBlock();
-  }
+  // The activity depends on where the company has gathered.
+  if (c.activity === 'croquet')    startCroquet(c, near);
+  else if (c.activity === 'shoot') startShoot(c, near);
+  else { applyStatusAveraging(near); finishBlock(); }
 }
 
 // Consume the block and advance the court day.
@@ -1696,7 +1693,7 @@ function updateCroquet(dt) {
       const won = cq.playerScore > cq.oppScore;
       const group = cq.group;
       state.croquet = null;
-      resolveCroquet(group, won);
+      resolveCompanyPlay(group, won);
       finishBlock();
     }
     return;
@@ -1710,7 +1707,8 @@ function pseudoRand(seed) {
 }
 
 // THE LESSON, ENCODED: the company's average level pulls you hard; the win is minor.
-function resolveCroquet(group, won) {
+// Shared by every court activity — croquet, the shooting party, conversation.
+function resolveCompanyPlay(group, won) {
   const groupMean = group.reduce((s,c)=>s+c.status,0) / group.length;
   const pgap = groupMean - state.courtStatus;
   // You are pulled 12% of the way toward the level of those you spent the hour with
@@ -1726,6 +1724,231 @@ function resolveCroquet(group, won) {
     }
   }
   updateHUD();
+}
+
+// ============================================================
+// THE SHOOTING PARTY — la chasse, wing-shooting with a flintlock fowling piece
+// A timed flush of game birds. Move the bead with arrows/d-pad, fire with
+// Space/TALK. The flintlock is single-shot: a reload follows every shot.
+// Your bag is only a thumb on the scale — the company you shoot with is what
+// moves your standing. Under a minute, by design.
+// ============================================================
+const SHOOT_DURATION = 32000;   // ~32s flush
+const SHOOT_RELOAD   = 850;     // flintlock reload between shots
+const SHOOT_WIN_BAG  = 5;       // a creditable showing
+
+function startShoot(host, group) {
+  state.shoot = {
+    host, group,
+    phase: 'intro',            // intro → active → result
+    timeLeft: SHOOT_DURATION,
+    bag: 0, shots: 0,
+    reload: 0,
+    crosshair: { x: CANVAS_SIZE/2, y: CANVAS_SIZE/2 },
+    birds: [],
+    puffs: [],
+    spawnTimer: 0,
+    seed: 1 + group.length + Math.round(host.status),
+    flash: '',
+  };
+}
+
+function shootSpawnBird(sh) {
+  sh.seed++;
+  const fromLeft = pseudoRand(sh.seed * 3.1) < 0.5;
+  const y0 = 120 + pseudoRand(sh.seed * 5.7) * 240;       // launch height band
+  const speed = 0.13 + pseudoRand(sh.seed * 2.3) * 0.10;  // px/ms
+  const rise = -(0.05 + pseudoRand(sh.seed * 7.9) * 0.06); // arc upward then level
+  sh.birds.push({
+    x: fromLeft ? -20 : CANVAS_SIZE + 20,
+    y: y0,
+    vx: (fromLeft ? 1 : -1) * speed,
+    vy: rise,
+    t: 0, alive: true, wing: 0,
+  });
+}
+
+function updateShoot(dt) {
+  const sh = state.shoot;
+  if (sh.phase === 'intro') {
+    if (interactPressed) { interactPressed = false; sh.phase = 'active'; }
+    return;
+  }
+  if (sh.phase === 'result') {
+    if (interactPressed) {
+      interactPressed = false;
+      const won = sh.bag >= SHOOT_WIN_BAG;
+      const group = sh.group;
+      state.shoot = null;
+      resolveCompanyPlay(group, won);
+      finishBlock();
+    }
+    return;
+  }
+
+  // active
+  sh.timeLeft -= dt;
+  if (sh.reload > 0) sh.reload -= dt;
+
+  // Move the bead
+  const csp = 0.42 * dt;
+  if (keys['ArrowLeft']  || keys['a'] || keys['A'] || touchDirs.left)  sh.crosshair.x -= csp;
+  if (keys['ArrowRight'] || keys['d'] || keys['D'] || touchDirs.right) sh.crosshair.x += csp;
+  if (keys['ArrowUp']    || keys['w'] || keys['W'] || touchDirs.up)    sh.crosshair.y -= csp;
+  if (keys['ArrowDown']  || keys['s'] || keys['S'] || touchDirs.down)  sh.crosshair.y += csp;
+  sh.crosshair.x = Math.max(16, Math.min(CANVAS_SIZE-16, sh.crosshair.x));
+  sh.crosshair.y = Math.max(60, Math.min(CANVAS_SIZE-90, sh.crosshair.y));
+
+  // Spawn birds
+  sh.spawnTimer -= dt;
+  if (sh.spawnTimer <= 0 && sh.birds.filter(b=>b.alive).length < 4) {
+    shootSpawnBird(sh);
+    sh.spawnTimer = 700 + pseudoRand(sh.seed * 1.7) * 700;
+  }
+
+  // Move birds
+  for (const b of sh.birds) {
+    if (!b.alive) { b.fy = (b.fy||b.y) + dt*0.4; continue; } // shot bird tumbles
+    b.t += dt;
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+    b.vy += 0.00004 * dt;       // gravity easing — arc levels and gently falls
+    b.wing += dt;
+  }
+  // Cull off-screen
+  sh.birds = sh.birds.filter(b => b.x > -40 && b.x < CANVAS_SIZE+40 && (b.alive ? b.y < CANVAS_SIZE : (b.fy||b.y) < CANVAS_SIZE+40));
+
+  // Fade puffs
+  for (const p of sh.puffs) p.life -= dt;
+  sh.puffs = sh.puffs.filter(p => p.life > 0);
+
+  // Fire
+  if (interactPressed) {
+    interactPressed = false;
+    if (sh.reload <= 0) {
+      sh.shots++; sh.reload = SHOOT_RELOAD;
+      // nearest live bird within bead radius
+      let best=null, bd=30;
+      for (const b of sh.birds) {
+        if (!b.alive) continue;
+        const d = Math.hypot(b.x - sh.crosshair.x, b.y - sh.crosshair.y);
+        if (d < bd) { bd = d; best = b; }
+      }
+      if (best) {
+        best.alive = false; best.fy = best.y; sh.bag++;
+        sh.puffs.push({ x: best.x, y: best.y, life: 420 });
+      } else {
+        sh.puffs.push({ x: sh.crosshair.x, y: sh.crosshair.y, life: 180, miss: true });
+      }
+    }
+  }
+
+  if (sh.timeLeft <= 0) sh.phase = 'result';
+}
+
+function renderShoot() {
+  const sh = state.shoot;
+  // Dawn sky over the park
+  const g = ctx.createLinearGradient(0,0,0,CANVAS_SIZE);
+  g.addColorStop(0, '#bcd0e0'); g.addColorStop(0.55, '#e8dcc0'); g.addColorStop(1, '#6a7a40');
+  ctx.fillStyle = g; ctx.fillRect(0,0,CANVAS_SIZE,CANVAS_SIZE);
+  // tree line
+  ctx.fillStyle = '#3a5a28';
+  for (let x=-20; x<CANVAS_SIZE+20; x+=46) {
+    ctx.beginPath(); ctx.arc(x, CANVAS_SIZE-150, 34, Math.PI, 0); ctx.fill();
+  }
+  ctx.fillStyle = '#4a6a30'; ctx.fillRect(0, CANVAS_SIZE-150, CANVAS_SIZE, 150);
+
+  // Birds
+  for (const b of sh.birds) {
+    const bx = b.x, by = b.alive ? b.y : (b.fy||b.y);
+    if (!b.alive) {
+      ctx.fillStyle = '#5a4a2a';
+      ctx.save(); ctx.translate(bx,by); ctx.rotate((b.t||0)*0.01);
+      ctx.fillRect(-5,-3,10,6); ctx.restore();
+      continue;
+    }
+    const flap = Math.sin(b.wing*0.02) > 0 ? -4 : 4;
+    ctx.fillStyle = '#4a3a22';
+    ctx.fillRect(bx-4, by-3, 8, 6);          // body
+    ctx.fillStyle = '#3a2c18';
+    ctx.beginPath();                          // wings (V)
+    ctx.moveTo(bx, by); ctx.lineTo(bx-12, by+flap); ctx.lineTo(bx-3, by); ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(bx, by); ctx.lineTo(bx+12, by+flap); ctx.lineTo(bx+3, by); ctx.closePath(); ctx.fill();
+  }
+
+  // Puffs
+  for (const p of sh.puffs) {
+    const a = Math.max(0, p.life/420);
+    if (p.miss) { ctx.fillStyle = `rgba(220,220,220,${a*0.5})`; ctx.fillRect(p.x-2,p.y-2,4,4); }
+    else { ctx.fillStyle = `rgba(245,240,225,${a})`; ctx.beginPath(); ctx.arc(p.x,p.y,8*(1.4-a),0,Math.PI*2); ctx.fill(); }
+  }
+
+  // Crosshair (bead)
+  if (sh.phase !== 'intro') {
+    const ch = sh.crosshair;
+    ctx.strokeStyle = sh.reload>0 ? 'rgba(200,80,40,0.8)' : 'rgba(30,20,10,0.9)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(ch.x, ch.y, 12, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(ch.x-18, ch.y); ctx.lineTo(ch.x-4, ch.y);
+    ctx.moveTo(ch.x+4, ch.y); ctx.lineTo(ch.x+18, ch.y);
+    ctx.moveTo(ch.x, ch.y-18); ctx.lineTo(ch.x, ch.y-4);
+    ctx.moveTo(ch.x, ch.y+4); ctx.lineTo(ch.x, ch.y+18);
+    ctx.stroke();
+  }
+
+  // HUD: timer, bag, reload
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(8,10,6,0.7)';
+  ctx.fillRect(34, 34, 230, 26 + sh.group.length*14);
+  ctx.fillStyle = '#e8e0c0'; ctx.font = '6px "Press Start 2P", monospace';
+  ctx.fillText('SHOOTING WITH:', 44, 52);
+  let gy = 68;
+  for (const c of sh.group) {
+    const nm = c.name.length > 18 ? c.name.slice(0,17)+'…' : c.name;
+    const chip = c.status >= 60 ? '#d4a020' : (c.status >= 40 ? '#a0a0b0' : '#6a6060');
+    ctx.fillStyle = chip; ctx.fillText(c.status + '  ' + nm, 44, gy); gy += 14;
+  }
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#3a2a14'; ctx.font = '9px "Press Start 2P", monospace';
+  ctx.fillText('BAG ' + sh.bag, CANVAS_SIZE/2, 50);
+
+  // timer bar
+  const pct = Math.max(0, sh.timeLeft / SHOOT_DURATION);
+  ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(CANVAS_SIZE/2-100, 60, 200, 8);
+  ctx.fillStyle = pct < 0.25 ? '#c03020' : '#3a7a2a'; ctx.fillRect(CANVAS_SIZE/2-100, 60, 200*pct, 8);
+
+  // reload indicator near bead
+  if (sh.phase === 'active' && sh.reload > 0) {
+    ctx.fillStyle = '#b03020'; ctx.font='6px "Press Start 2P", monospace';
+    ctx.fillText('reloading…', sh.crosshair.x, sh.crosshair.y + 34);
+  }
+
+  // prompts
+  ctx.fillStyle = '#2a1e0a'; ctx.font = '7px "Press Start 2P", monospace';
+  if (sh.phase === 'intro') {
+    ctx.fillStyle = 'rgba(20,14,4,0.8)'; ctx.fillRect(CANVAS_SIZE/2-220, CANVAS_SIZE/2-40, 440, 80);
+    ctx.fillStyle = '#f0e4c0';
+    ctx.fillText('A FLINTLOCK FOWLING PARTY', CANVAS_SIZE/2, CANVAS_SIZE/2-12);
+    ctx.font='6px "Press Start 2P", monospace';
+    ctx.fillText('Arrows / D-pad: aim    Space / TALK: fire', CANVAS_SIZE/2, CANVAS_SIZE/2+8);
+    ctx.fillText('Press SPACE to take your stand', CANVAS_SIZE/2, CANVAS_SIZE/2+28);
+  } else if (sh.phase === 'result') {
+    const won = sh.bag >= SHOOT_WIN_BAG;
+    ctx.fillStyle = 'rgba(20,14,4,0.82)'; ctx.fillRect(CANVAS_SIZE/2-220, CANVAS_SIZE/2-50, 440, 100);
+    ctx.fillStyle = won ? '#f0d040' : '#d08060'; ctx.font='11px "Press Start 2P", monospace';
+    ctx.fillText(won ? 'A FINE BAG' : 'A POOR BAG', CANVAS_SIZE/2, CANVAS_SIZE/2-14);
+    ctx.fillStyle = '#cfc4a8'; ctx.font='6px "Press Start 2P", monospace';
+    ctx.fillText(sh.bag + ' birds from ' + sh.shots + ' shots', CANVAS_SIZE/2, CANVAS_SIZE/2+8);
+    ctx.fillStyle = '#bcae8a';
+    ctx.fillText('But the morning was spent in their company.', CANVAS_SIZE/2, CANVAS_SIZE/2+26);
+    ctx.fillStyle = '#fff4d0'; ctx.font='7px "Press Start 2P", monospace';
+    ctx.fillText('SPACE to return to the gardens', CANVAS_SIZE/2, CANVAS_SIZE/2+46);
+  }
+  ctx.textAlign = 'left';
 }
 
 // ============================================================
@@ -2889,6 +3112,12 @@ function update(dt) {
     return;
   }
 
+  // Shooting party takes over input while it runs
+  if (state.shoot) {
+    updateShoot(dt);
+    return;
+  }
+
   // Court day summary waits for SPACE/interact
   if (state.courtDaySummary) {
     if (interactPressed) {
@@ -3066,6 +3295,8 @@ function gameLoop(ts) {
       renderTravel();
     } else if (state.croquet) {
       renderCroquet();
+    } else if (state.shoot) {
+      renderShoot();
     } else if (state.courtDaySummary) {
       renderCourtSummary();
     } else if (state.currentWorld === 'court') {
@@ -3106,7 +3337,7 @@ function resetGame() {
   state.messengerArrived=false; state.summonsAccepted=false;
   state.daysAwayFromFief=0; state.courtDaysSpent=0; state.blocksUsedToday=0;
   state.intendantInstalled=false; state.intendantMet=false;
-  state.courtDaySummary=null; state.travelScreen=null; state.croquet=null;
+  state.courtDaySummary=null; state.travelScreen=null; state.croquet=null; state.shoot=null;
   for (let npc of npcs) {
     npc.met=false; npc.requestId=null;
     if (npc.tutorialIdx !== undefined) npc.tutorialIdx=0;

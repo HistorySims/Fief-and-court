@@ -798,6 +798,7 @@ let state = {
   intendantMet: false,
   courtDaySummary: null,    // overlay after a court day
   travelScreen: null,       // {phase, timer, total}
+  croquet: null,            // croquet minigame state machine
 };
 
 const SEASONS = ['Spring','Summer','Autumn','Winter'];
@@ -1024,30 +1025,48 @@ function resetCourtiers() {
   courtiers = COURTIER_DEFS.map(c => ({...c, color:{...c.color}, met:false, facingPlayer:false, isCourtier:true}));
 }
 
-// Each court day the salons re-form: the highest-status courtiers gather in the
-// prime salon nearest the throne; lesser ranks orbit the fringes. Whom you choose
-// to stand among is the whole game.
+// The gathering-places of the court. Each holds a cluster of courtiers.
+// The croquet lawn is out in the gardens; the rest are in the Hall of Mirrors.
+const COURT_LOCATIONS = [
+  { id:'prime', lawn:false, spots:[ [11,4],[12,4],[10,5],[13,5],[11,6] ] }, // centre, near throne
+  { id:'left',  lawn:false, spots:[ [7,4],[8,5],[6,5],[8,3] ] },
+  { id:'right', lawn:false, spots:[ [16,4],[17,5],[15,5],[17,3] ] },
+  { id:'lawn',  lawn:true,  spots:[ [5,11],[7,11],[5,13],[7,13],[6,12] ] }, // the croquet lawn
+];
+
+// Each court day the cliques re-form. The high-status set's "hot" gathering
+// alternates between the Hall of Mirrors and the croquet lawn — so every other
+// day, joining the cool set MEANS playing croquet. Lesser ranks spread across
+// every gathering, so the lawn always has company of *some* sort: you can always
+// play, the only question is who with.
 function redistributeCourtiers() {
-  // Three salons in the Hall of Mirrors, prime salon centre-front near the throne
-  const salons = [
-    [ [11,4],[12,4],[10,5],[13,5],[11,6] ],   // prime (centre)
-    [ [7,4],[8,5],[6,5],[8,3] ],               // left salon
-    [ [16,4],[17,5],[15,5],[17,3] ],           // right salon
-  ];
+  const slots = COURT_LOCATIONS.map(l => l.spots.slice());
+  const idx = { prime:0, left:1, right:2, lawn:3 };
+  const placeAnywhere = (c) => {
+    for (let i = 0; i < slots.length; i++) if (slots[i].length) { const [tx,ty]=slots[i].shift(); c.tx=tx; c.ty=ty; return; }
+  };
   const sorted = [...courtiers].sort((a,b)=>b.status-a.status);
-  // Top tier → prime salon, then alternate the rest between the side salons
-  const slots = { 0:[...salons[0]], 1:[...salons[1]], 2:[...salons[2]] };
-  let sideToggle = 1;
-  sorted.forEach((c, i) => {
-    let salon;
-    if (c.status >= 60 && slots[0].length) salon = 0;
-    else { salon = sideToggle; sideToggle = sideToggle === 1 ? 2 : 1; if (!slots[salon].length) salon = slots[1].length ? 1 : (slots[2].length ? 2 : 0); }
-    if (!slots[salon].length) salon = [0,1,2].find(s=>slots[s].length);
-    if (salon === undefined) return;
-    const [tx,ty] = slots[salon].shift();
-    c.tx = tx; c.ty = ty;
-  });
+  const hot = (state.courtDaysSpent % 2 === 0) ? idx.prime : idx.lawn;
+  // The high-status set chases the hot gathering
+  for (const c of sorted.filter(c=>c.status>=60)) {
+    if (slots[hot].length) { const [tx,ty]=slots[hot].shift(); c.tx=tx; c.ty=ty; }
+    else placeAnywhere(c);
+  }
+  // Everyone else spreads round-robin so every gathering, lawn included, has bodies
+  const ring = [idx.prime, idx.left, idx.right, idx.lawn];
+  let r = 0;
+  for (const c of sorted.filter(c=>c.status<60)) {
+    let placed = false;
+    for (let t = 0; t < ring.length; t++) {
+      const li = ring[(r++) % ring.length];
+      if (slots[li].length) { const [tx,ty]=slots[li].shift(); c.tx=tx; c.ty=ty; placed=true; break; }
+    }
+    if (!placed) placeAnywhere(c);
+  }
 }
+
+// Is this courtier currently out on the croquet lawn (in the gardens)?
+function onLawn(c) { return c.ty >= 10; }
 
 // Courtier dialogue keyed to the gap between their status and the player's
 function courtierLine(c) {
@@ -1518,22 +1537,41 @@ function talkToCourtier(c) {
     openDialogue(c, text + "\n\n(The day at court is spent. You have no more time to give.)", [{text:'Withdraw', action:closeDialogue}]);
     return;
   }
+  const lawn = onLawn(c);
+  const verb = lawn ? 'Join the croquet' : 'Spend the hour here';
   openDialogue(c, text, [
-    {text:'Spend the hour here', hint:'uses 1 of 4 blocks', action:()=>{ closeDialogue(); spendBlock(c); }},
+    {text:verb, hint:'uses 1 of 4 blocks', action:()=>{ closeDialogue(); spendBlock(c); }},
     {text:'Move on', action:closeDialogue}
   ]);
 }
 
-// A "block" is a quarter of the courtly day spent in someone's company.
-function spendBlock(c) {
-  state.blocksUsedToday++;
-  // Everyone within 3 tiles of the chosen courtier is part of the circle
+const clampStatus = v => Math.max(5, Math.min(99, Math.round(v)));
+
+// The circle present around a chosen courtier — everyone within 3 tiles.
+function circleAround(c) {
   const near = courtiers.filter(o => {
     const dx = o.tx - c.tx, dy = o.ty - c.ty;
     return Math.sqrt(dx*dx + dy*dy) <= 3;
   });
   if (!near.includes(c)) near.push(c);
-  applyStatusAveraging(near);
+  return near;
+}
+
+// A "block" is a quarter of the courtly day spent in someone's company.
+function spendBlock(c) {
+  const near = circleAround(c);
+  // Out on the lawn, the hour is spent at croquet; in the hall, in conversation.
+  if (onLawn(c)) {
+    startCroquet(c, near);
+  } else {
+    applyStatusAveraging(near);
+    finishBlock();
+  }
+}
+
+// Consume the block and advance the court day.
+function finishBlock() {
+  state.blocksUsedToday++;
   updateHUD();
   if (state.blocksUsedToday >= 4) {
     endCourtDay();
@@ -1550,13 +1588,144 @@ function applyStatusAveraging(group) {
     const gap = mean - c.status;
     if (Math.abs(gap) < 0.0001) continue;
     const move = Math.sign(gap) * Math.max(1, Math.abs(gap) * 0.1);
-    c.status = Math.max(5, Math.min(99, Math.round(c.status + move)));
+    c.status = clampStatus(c.status + move);
   }
   const pgap = mean - state.courtStatus;
   if (Math.abs(pgap) >= 0.0001) {
     const pmove = Math.sign(pgap) * Math.max(1, Math.abs(pgap) * 0.1);
-    state.courtStatus = Math.max(5, Math.min(99, Math.round(state.courtStatus + pmove)));
+    state.courtStatus = clampStatus(state.courtStatus + pmove);
   }
+}
+
+// ============================================================
+// CROQUET — the garden minigame
+// Company dominates: you are pulled hard toward the level of those you play
+// with. Winning is only a small thumb on the scale. Losing among the high is
+// better than winning among the low. No UI ever explains this.
+// ============================================================
+function startCroquet(opponent, group) {
+  state.croquet = {
+    opponent, group,
+    phase: 'intro',          // intro → power → aim → fly → tally → result
+    round: 1, maxRounds: 3,
+    playerScore: 0, oppScore: 0,
+    power: 0, powerDir: 1,
+    angle: 0, angleDir: 1,
+    lockedPower: 0,
+    hoopX: 0, hoopDist: 0,
+    ball: null, target: null,
+    anim: 0, msg: '',
+    roundResult: null,       // 'hit' | 'miss'
+  };
+  setupCroquetRound();
+}
+
+function setupCroquetRound() {
+  const cq = state.croquet;
+  cq.phase = 'power';
+  cq.power = 0; cq.powerDir = 1;
+  cq.angle = 0; cq.angleDir = 1;
+  // Hoop placement varies each round (deterministic-ish per round)
+  const offsets = [0, -70, 80];
+  cq.hoopX = 320 + (offsets[(cq.round-1) % offsets.length] || 0);
+  cq.hoopY = 150;
+  cq.reqPower = 75; // power that lands the ball on the hoop's line (y=150)
+  cq.ball = { x: 320, y: 540 };
+  cq.roundResult = null;
+}
+
+function updateCroquet(dt) {
+  const cq = state.croquet;
+  if (cq.phase === 'intro') {
+    if (interactPressed) { interactPressed = false; cq.phase = 'power'; }
+    return;
+  }
+  if (cq.phase === 'power') {
+    cq.power += cq.powerDir * dt * 0.12;
+    if (cq.power >= 100) { cq.power = 100; cq.powerDir = -1; }
+    if (cq.power <= 0)   { cq.power = 0;   cq.powerDir = 1; }
+    if (interactPressed) { interactPressed = false; cq.lockedPower = cq.power; cq.phase = 'aim'; }
+    return;
+  }
+  if (cq.phase === 'aim') {
+    cq.angle += cq.angleDir * dt * 0.10;
+    if (cq.angle >= 100) { cq.angle = 100; cq.angleDir = -1; }
+    if (cq.angle <= 0)   { cq.angle = 0;   cq.angleDir = 1; }
+    if (interactPressed) {
+      interactPressed = false;
+      // Resolve the shot: where does the ball come to rest?
+      const aimOff = (cq.angle - 50) / 50 * 140;            // -140..+140 px horizontal
+      const reach = cq.lockedPower / 100 * 520;              // travel up the lawn
+      cq.target = { x: 320 + aimOff, y: 540 - reach };
+      cq.flyT = 0;
+      cq.phase = 'fly';
+    }
+    return;
+  }
+  if (cq.phase === 'fly') {
+    cq.flyT += dt;
+    const t = Math.min(1, cq.flyT / 600);
+    cq.ball.x = 320 + (cq.target.x - 320) * t;
+    cq.ball.y = 540 + (cq.target.y - 540) * t;
+    if (t >= 1) {
+      const dx = cq.ball.x - cq.hoopX, dy = cq.ball.y - cq.hoopY;
+      const hit = Math.sqrt(dx*dx + dy*dy) < 40;
+      cq.roundResult = hit ? 'hit' : 'miss';
+      if (hit) cq.playerScore++;
+      // Opponent plays their stroke — a real but light contest
+      const oppHit = pseudoRand(cq.round * 7 + cq.opponent.status) < 0.5;
+      if (oppHit) cq.oppScore++;
+      cq.oppRoundHit = oppHit;
+      cq.phase = 'tally';
+      cq.anim = 0;
+    }
+    return;
+  }
+  if (cq.phase === 'tally') {
+    cq.anim += dt;
+    if (interactPressed || cq.anim > 2600) {
+      interactPressed = false;
+      if (cq.round >= cq.maxRounds) { cq.phase = 'result'; }
+      else { cq.round++; setupCroquetRound(); }
+    }
+    return;
+  }
+  if (cq.phase === 'result') {
+    if (interactPressed) {
+      interactPressed = false;
+      const won = cq.playerScore > cq.oppScore;
+      const group = cq.group;
+      state.croquet = null;
+      resolveCroquet(group, won);
+      finishBlock();
+    }
+    return;
+  }
+}
+
+// Deterministic-ish pseudo-random in [0,1) seeded by an integer (no Date/Math.random reliance for resume safety here we still use Math.random fallback)
+function pseudoRand(seed) {
+  const x = Math.sin(seed * 12.9898) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+// THE LESSON, ENCODED: the company's average level pulls you hard; the win is minor.
+function resolveCroquet(group, won) {
+  const groupMean = group.reduce((s,c)=>s+c.status,0) / group.length;
+  const pgap = groupMean - state.courtStatus;
+  // You are pulled 12% of the way toward the level of those you spent the hour with
+  let pmove = 0;
+  if (Math.abs(pgap) >= 0.0001) pmove = Math.sign(pgap) * Math.max(1, Math.abs(pgap) * 0.12);
+  // Winning is a small flat bonus on top — never enough to outweigh the company
+  state.courtStatus = clampStatus(state.courtStatus + pmove + (won ? 2 : 0));
+  // A victory also tugs the company a touch toward you
+  if (won) {
+    for (const c of group) {
+      const g = state.courtStatus - c.status;
+      if (Math.abs(g) >= 0.0001) c.status = clampStatus(c.status + Math.sign(g) * Math.max(1, Math.abs(g) * 0.06));
+    }
+  }
+  updateHUD();
 }
 
 // ============================================================
@@ -2485,6 +2654,140 @@ function renderCourtSummary() {
   ctx.textAlign = 'left';
 }
 
+// ---- Croquet minigame overlay ----
+function renderCroquet() {
+  const cq = state.croquet;
+  // Lawn
+  ctx.fillStyle = '#3a7a2a';
+  ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  // mown stripes
+  ctx.fillStyle = 'rgba(0,0,0,0.06)';
+  for (let i = 0; i < 16; i++) if (i%2) ctx.fillRect(i*40, 0, 40, CANVAS_SIZE);
+  // hedge border
+  ctx.fillStyle = '#1a4a1a';
+  ctx.fillRect(0,0,CANVAS_SIZE,24); ctx.fillRect(0,CANVAS_SIZE-24,CANVAS_SIZE,24);
+  ctx.fillRect(0,0,24,CANVAS_SIZE); ctx.fillRect(CANVAS_SIZE-24,0,24,CANVAS_SIZE);
+
+  // The company you are playing with — shown plainly, never explained
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(8,10,6,0.7)';
+  ctx.fillRect(34, 34, 250, 26 + cq.group.length*14);
+  ctx.fillStyle = '#e8e0c0';
+  ctx.font = '6px "Press Start 2P", monospace';
+  ctx.fillText('PLAYING WITH:', 44, 52);
+  let gy = 68;
+  for (const c of cq.group) {
+    const nm = c.name.length > 20 ? c.name.slice(0,19)+'…' : c.name;
+    const chip = c.status >= 60 ? '#d4a020' : (c.status >= 40 ? '#a0a0b0' : '#6a6060');
+    ctx.fillStyle = chip;
+    ctx.fillText(c.status + '  ' + nm, 44, gy);
+    gy += 14;
+  }
+
+  // Scoreboard
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f4ecd0';
+  ctx.font = '8px "Press Start 2P", monospace';
+  ctx.fillText('YOU ' + cq.playerScore + ' — ' + cq.oppScore + ' ' + lastName(cq.opponent.name), CANVAS_SIZE/2, 50);
+  ctx.fillStyle = '#cfc4a8';
+  ctx.font = '6px "Press Start 2P", monospace';
+  ctx.fillText('Round ' + cq.round + ' of ' + cq.maxRounds, CANVAS_SIZE/2, 66);
+
+  // Hoop
+  if (cq.phase !== 'intro') {
+    ctx.strokeStyle = '#ece4d0';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(cq.hoopX, cq.hoopY, 18, Math.PI*0.15, Math.PI*0.85, true);
+    ctx.stroke();
+    ctx.fillStyle = '#b03030';
+    ctx.fillRect(cq.hoopX-2, cq.hoopY-30, 4, 14); // flag pole
+    ctx.fillStyle = '#e0c040';
+    ctx.fillRect(cq.hoopX+2, cq.hoopY-30, 12, 8);
+  }
+
+  // Ball
+  if (cq.ball) {
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath(); ctx.ellipse(cq.ball.x, cq.ball.y+8, 9, 3, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#f0e8d0';
+    ctx.beginPath(); ctx.arc(cq.ball.x, cq.ball.y, 8, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#c83030';
+    ctx.fillRect(cq.ball.x-8, cq.ball.y-2, 16, 3);
+  }
+
+  // Aim guide line
+  if (cq.phase === 'aim') {
+    const aimOff = (cq.angle - 50) / 50 * 140;
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.setLineDash([6,6]); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(320,540); ctx.lineTo(320+aimOff, 540-200); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Meters
+  if (cq.phase === 'power' || cq.phase === 'aim') {
+    drawMeter('POWER', cq.power, 120, cq.phase==='power');
+    drawMeter('AIM',   cq.angle, 150, cq.phase==='aim');
+  }
+
+  // Prompts / messages
+  ctx.fillStyle = '#fff4d0';
+  ctx.font = '7px "Press Start 2P", monospace';
+  let prompt = '';
+  if (cq.phase === 'intro') prompt = 'A round of croquet. Press SPACE to begin.';
+  else if (cq.phase === 'power') prompt = 'SPACE to set your power';
+  else if (cq.phase === 'aim')   prompt = 'SPACE to set your aim';
+  else if (cq.phase === 'fly')   prompt = '';
+  else if (cq.phase === 'tally') {
+    const yours = cq.roundResult === 'hit' ? 'You make the hoop!' : 'You miss the hoop.';
+    const theirs = cq.oppRoundHit ? lastName(cq.opponent.name)+' makes it too.' : lastName(cq.opponent.name)+' misses.';
+    ctx.fillStyle = cq.roundResult==='hit' ? '#90e060' : '#e07060';
+    ctx.fillText(yours, CANVAS_SIZE/2, CANVAS_SIZE-110);
+    ctx.fillStyle = '#cfc4a8';
+    ctx.fillText(theirs, CANVAS_SIZE/2, CANVAS_SIZE-92);
+    prompt = 'SPACE to continue';
+    ctx.fillStyle = '#fff4d0';
+  }
+  else if (cq.phase === 'result') {
+    const won = cq.playerScore > cq.oppScore;
+    const tie = cq.playerScore === cq.oppScore;
+    ctx.fillStyle = won ? '#f0d040' : (tie ? '#c0c0b0' : '#d08060');
+    ctx.font = '11px "Press Start 2P", monospace';
+    ctx.fillText(won ? 'YOU WIN THE MATCH' : (tie ? 'A DRAWN MATCH' : 'YOU LOSE THE MATCH'), CANVAS_SIZE/2, CANVAS_SIZE/2 - 10);
+    ctx.font = '6px "Press Start 2P", monospace';
+    ctx.fillStyle = '#bcae8a';
+    ctx.fillText('But the hour was spent in their company.', CANVAS_SIZE/2, CANVAS_SIZE/2 + 16);
+    prompt = 'SPACE to return to the gardens';
+  }
+  if (prompt) { ctx.fillStyle='#fff4d0'; ctx.font='7px "Press Start 2P", monospace'; ctx.fillText(prompt, CANVAS_SIZE/2, CANVAS_SIZE - 48); }
+  ctx.textAlign = 'left';
+}
+
+function drawMeter(label, val, y, active) {
+  const x = 220, w = 200, h = 16;
+  ctx.textAlign = 'left';
+  ctx.fillStyle = active ? '#f0d040' : '#8a8470';
+  ctx.font = '6px "Press Start 2P", monospace';
+  ctx.fillText(label, x, y - 4);
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillRect(x, y, w, h);
+  const col = val > 66 ? '#e05030' : (val > 33 ? '#e0c040' : '#60c060');
+  ctx.fillStyle = active ? col : 'rgba(160,160,140,0.5)';
+  ctx.fillRect(x+2, y+2, (w-4) * val/100, h-4);
+  // sweet-spot marker for power (the hoop line)
+  if (label === 'POWER' && state.croquet) {
+    const req = state.croquet.reqPower;
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.fillRect(x+2 + (w-4)*req/100 - 1, y, 2, h);
+  }
+}
+
+function lastName(full) {
+  const parts = full.split(' ');
+  return parts[parts.length-1];
+}
+
 function render(dt) {
   ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
@@ -2577,6 +2880,12 @@ function update(dt) {
       if (phase === 'to_court') arriveAtCourt();
       else arriveAtFief();
     }
+    return;
+  }
+
+  // Croquet minigame takes over input while it runs
+  if (state.croquet) {
+    updateCroquet(dt);
     return;
   }
 
@@ -2755,6 +3064,8 @@ function gameLoop(ts) {
     update(dt);
     if (state.travelScreen) {
       renderTravel();
+    } else if (state.croquet) {
+      renderCroquet();
     } else if (state.courtDaySummary) {
       renderCourtSummary();
     } else if (state.currentWorld === 'court') {
@@ -2795,7 +3106,7 @@ function resetGame() {
   state.messengerArrived=false; state.summonsAccepted=false;
   state.daysAwayFromFief=0; state.courtDaysSpent=0; state.blocksUsedToday=0;
   state.intendantInstalled=false; state.intendantMet=false;
-  state.courtDaySummary=null; state.travelScreen=null;
+  state.courtDaySummary=null; state.travelScreen=null; state.croquet=null;
   for (let npc of npcs) {
     npc.met=false; npc.requestId=null;
     if (npc.tutorialIdx !== undefined) npc.tutorialIdx=0;

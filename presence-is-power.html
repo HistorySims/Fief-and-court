@@ -800,6 +800,8 @@ let state = {
   travelScreen: null,       // {phase, timer, total}
   croquet: null,            // croquet minigame state machine
   shoot: null,              // shooting-party minigame state machine
+  attendantLog: [],         // intendant's daily decisions while you are at court
+  pendingAttendantReport: false, // a fresh dispatch awaits your attention
 };
 
 const SEASONS = ['Spring','Summer','Autumn','Winter'];
@@ -991,7 +993,7 @@ let npcs = [
   },
   {
     id:'intendant', name:'Intendant Moreau', role:"King's Administrator",
-    tx:15, ty:11,
+    tx:15, ty:11, courtTx:5, courtTy:9,
     color: {body:'#2a1a3a', hair:'#1a1a1a'},
     firstLine: "Your estate functions within acceptable parameters, my lord.",
     idleLines: [
@@ -1095,6 +1097,30 @@ function courtierLine(c) {
 }
 
 // ============================================================
+// INTENDANT — the daily decisions he makes administering your fief.
+// Each loses peasant Trust and raises Estate Output. You may let them stand
+// or overrule them when you review his dispatch at court.
+// ============================================================
+const INTENDANT_DECISIONS = [
+  { id:'mill_tax',  trust:-3, estate:2,
+    text:"I raised the mill tax a half-sou. The people grumbled; the coffers did not." },
+  { id:'corvee',    trust:-4, estate:3,
+    text:"I put the idle cottagers to clearing the north field. They were not asked twice." },
+  { id:'enclose',   trust:-4, estate:3,
+    text:"I enclosed the common pasture for the estate flocks. The shepherds objected. I noted the objection." },
+  { id:'seed_sell', trust:-2, estate:2, money:3,
+    text:"I sold a portion of the seed-grain reserve at market. We are richer, my lord. And thinner." },
+  { id:'festival',  trust:-5, estate:2,
+    text:"I docked the harvest-festival fund and entered it as surplus. Sentiment is not a crop." },
+  { id:'quarter',   trust:-3, estate:1,
+    text:"I quartered the King's surveyors in the village at the people's expense. An honour, I told them." },
+  { id:'longhours', trust:-3, estate:3,
+    text:"I extended the working day by an hour through harvest. Output rose accordingly." },
+  { id:'fines',     trust:-4, estate:2, money:2,
+    text:"I levied fines for poaching in the lord's wood. Several families paid. The wood is quieter now." },
+];
+
+// ============================================================
 // REQUEST POOL
 // ============================================================
 const REQUEST_POOL = [
@@ -1102,8 +1128,8 @@ const REQUEST_POOL = [
     id:'sick_child', npcId:'renee', minDay:1,
     getDialogue: () => "My lord, please — my little one burns with fever. The apothecary wants coin I don't have.",
     options: [
-      { text:"Fund medicine", hint:"-5 gold", effect:()=>{ applyStats({trust:8, money:-5}); return "You send coin for medicine. The child's fever breaks by morning.\n\nTrust: +8"; } },
-      { text:"Offer prayers only", hint:"free", effect:()=>{ applyStats({trust:-4}); return "You offer prayers. Renée weeps quietly as you leave.\n\nTrust: -4"; } }
+      { text:"Fund medicine", hint:"-5 gold", after:"Little Pierre runs and shouts again, my lord — all because of you. I will not forget it.", effect:()=>{ applyStats({trust:8, money:-5}); return "You send coin for medicine. The child's fever breaks by morning.\n\nTrust: +8"; } },
+      { text:"Offer prayers only", hint:"free", after:"We buried him on Sunday, my lord. I do not blame you. I only... I prayed too.", effect:()=>{ applyStats({trust:-4}); return "You offer prayers. Renée weeps quietly as you leave.\n\nTrust: -4"; } }
     ]
   },
   {
@@ -1134,8 +1160,8 @@ const REQUEST_POOL = [
     id:'wolf_pack', npcId:'luc', minDay:2,
     getDialogue: () => "Three sheep last night. If we don't hire hunters now, we'll lose the whole flock by winter.",
     options: [
-      { text:"Hire hunters", hint:"-6 gold", effect:()=>{ applyStats({trust:5, money:-6}); return "Hunters are hired. The wolves are driven back.\n\nTrust: +5"; } },
-      { text:"Do nothing", hint:"free", effect:()=>{ applyStats({trust:-8, estate:-3}); return "You do nothing. More sheep vanish. Luc stops meeting your eyes.\n\nTrust: -8  Estate: -3"; } }
+      { text:"Hire hunters", hint:"-6 gold", after:"The wolves have not come back, my lord. The flock sleeps easy, and so do I. My thanks.", effect:()=>{ applyStats({trust:5, money:-6}); return "Hunters are hired. The wolves are driven back.\n\nTrust: +5"; } },
+      { text:"Do nothing", hint:"free", after:"Half the flock is gone now, my lord. I still count them each dusk. Habit, I suppose.", effect:()=>{ applyStats({trust:-8, estate:-3}); return "You do nothing. More sheep vanish. Luc stops meeting your eyes.\n\nTrust: -8  Estate: -3"; } }
     ]
   },
   {
@@ -1156,10 +1182,10 @@ const REQUEST_POOL = [
   },
   {
     id:'farmer_dispute', npcId:'thomas', minDay:4,
-    getDialogue: () => "Two families claim the same strip of land. They'll come to blows if you don't settle it.",
+    getDialogue: () => "The river meadow, my lord — two families claim it. The Bouchers hold an old deed; your own records bear their name on that strip, going back three generations. But the Vidals are kin to the King's bailiff, and the bailiff has let it be known he is... watching how you rule.",
     options: [
-      { text:"Judge fairly", hint:"free", effect:()=>{ applyStats({trust:4}); return "You hear both sides and rule. The families grumble but accept it.\n\nTrust: +4"; } },
-      { text:"Ignore it", hint:"free", effect:()=>{ applyStats({trust:-5}); return "You ignore it. Shouting is heard from the village that evening.\n\nTrust: -5"; } }
+      { text:"Rule for the Bouchers (your records)", hint:"the deed is theirs", after:"You kept your word and your records, my lord. The village saw it. A lord who honours his own ledger — that is worth more than coin.", effect:()=>{ applyStats({trust:7, estate:-2}); state.favor = Math.max(0, state.favor - 4); updateHUD(); return "You honour the deed. The Bouchers weep; the village nods — a lord whose word matches his records. But the bailiff hears you would not oblige his kin.\n\nTrust: +7  Estate: -2  (a friend at court, lost)"; } },
+      { text:"Rule for the Vidals (the connected)", hint:"please the bailiff", after:"The Vidals have the meadow now, my lord. The Bouchers do not speak of it. They do not speak much to me at all, these days.", effect:()=>{ applyStats({trust:-7, estate:3}); state.favor = Math.min(100, state.favor + 4); updateHUD(); return "You rule for the Vidals. The bailiff sends his compliments to Versailles. The Bouchers burn their deed in the square — and your name with it.\n\nTrust: -7  Estate: +3  (a friend made at court)"; } }
     ]
   },
   {
@@ -1456,6 +1482,8 @@ function talkToNpc(npc) {
         state.activeRequests = state.activeRequests.filter(r => r.id !== req.id);
         state.completedRequests.add(req.id);
         npc.requestId = null;
+        npc.met = true;                      // they have now properly met you
+        npc.lastResolved = opt.after || req.resolved || null; // aftermath reflects the choice
         closeDialogue();
         showPopup('Response', result, null);
       }
@@ -1463,18 +1491,21 @@ function talkToNpc(npc) {
     return;
   }
 
-  // Armand butler tutorial — sequences through instructions
-  if (npc.id === 'armand' && npc.met && npc.tutorialLines) {
-    if (npc.tutorialIdx < npc.tutorialLines.length) {
-      const line = npc.tutorialLines[npc.tutorialIdx];
-      const isLast = npc.tutorialIdx === npc.tutorialLines.length - 1;
-      npc.tutorialIdx++;
-      openDialogue(npc, line, [{
-        text: isLast ? 'Thank you, Armand.' : 'Go on.',
-        action: closeDialogue
-      }]);
+  // Armand butler tutorial — chained, with the choice to go on or take your leave
+  if (npc.id === 'armand' && npc.tutorialLines) {
+    if (!npc.met) {
+      npc.met = true;
+      openDialogue(npc, npc.firstLine, [
+        {text:'Please, explain', action:()=>showArmandTutorial(0)},
+        {text:'Not just now', action:closeDialogue}
+      ]);
       return;
     }
+    if (npc.tutorialIdx < npc.tutorialLines.length) {
+      showArmandTutorial(npc.tutorialIdx);
+      return;
+    }
+    // tutorial finished — fall through to idle lines
   }
 
   // Henri easter egg — simulation musings after 2+ visits
@@ -1519,10 +1550,25 @@ function talkToNpc(npc) {
   } else if (npc.id === 'colette' && state.npcFlags.fungusSpreading && !state.npcFlags.fungusHandled && npc.fungusLines) {
     const fl = npc.fungusLines;
     text = fl[Math.floor(Math.random() * fl.length)];
+  } else if (npc.lastResolved && Math.random() < 0.55) {
+    text = npc.lastResolved;   // the grateful aftermath of a matter you settled
   } else {
     text = npc.idleLines[Math.floor(Math.random() * npc.idleLines.length)];
   }
   openDialogue(npc, text, [{text:'Farewell', action:closeDialogue}]);
+}
+
+// Armand's tutorial, chained within a single dialogue box.
+function showArmandTutorial(idx) {
+  const npc = npcs.find(n => n.id === 'armand');
+  npc.tutorialIdx = Math.max(npc.tutorialIdx, idx + 1);
+  const line = npc.tutorialLines[idx];
+  const isLast = idx === npc.tutorialLines.length - 1;
+  const buttons = isLast
+    ? [{text:'Thank you, Armand.', action:closeDialogue}]
+    : [{text:'Go on', action:()=>showArmandTutorial(idx+1)},
+       {text:'That is enough for now', action:closeDialogue}];
+  openDialogue(npc, line, buttons);
 }
 
 // ============================================================
@@ -2187,10 +2233,15 @@ function endCourtDay() {
   state.money  += fiefIncome;
   state.estate  = Math.max(0, state.estate - 2);
   state.trust   = Math.max(0, state.trust - 1);
+
+  // The Intendant takes a decision in your absence — trust down, output up
+  let decision = null;
   if (state.intendantInstalled) {
-    state.estate = Math.min(100, state.estate + 1);
-    state.money += 2;
-    state.trust  = Math.max(0, state.trust - 2);
+    const d = INTENDANT_DECISIONS[Math.floor(Math.random() * INTENDANT_DECISIONS.length)];
+    decision = { ...d, day: state.courtDaysSpent, reviewed: false, overruled: false };
+    applyDecision(decision, +1);
+    state.attendantLog.push(decision);
+    state.pendingAttendantReport = true;
   }
 
   // Attending court restores favor
@@ -2206,9 +2257,59 @@ function endCourtDay() {
     },
     favorChange: 5,
     intendant: state.intendantInstalled,
+    decision: decision ? decision.text : null,
   };
   updateHUD();
   checkGameOver();
+}
+
+// Apply (dir=+1) or revert (dir=-1) an intendant decision's effects.
+function applyDecision(d, dir) {
+  state.trust  = Math.max(0, Math.min(100, state.trust  + dir * (d.trust  || 0)));
+  state.estate = Math.max(0, Math.min(100, state.estate + dir * (d.estate || 0)));
+  state.money  = Math.max(0, state.money + dir * (d.money || 0));
+}
+
+// Talk to your attendant at Versailles — the overnight dispatch from the fief.
+function talkToAttendant() {
+  const unreviewed = state.attendantLog.filter(d => !d.reviewed);
+  state.pendingAttendantReport = false;
+  if (unreviewed.length === 0) {
+    intendantNpc.met = true;
+    openDialogue(intendantNpc, "Nothing further to report, my lord. The estate runs as I have set it. The ledgers are current.", [{text:'Very well', action:closeDialogue}]);
+    return;
+  }
+  // Report the most recent decision and offer to review the lot
+  const latest = unreviewed[unreviewed.length - 1];
+  const lines = [
+    latest.text,
+    "",
+    "Estate output is up. Peasant trust is down. The arithmetic favours the King.",
+  ].join("\n");
+  intendantNpc.met = true;
+  openDialogue(intendantNpc, lines, [
+    {text:'Review his decisions ('+unreviewed.length+')', action:()=>reviewDecision(0, unreviewed)},
+    {text:'Go and play', action:closeDialogue}
+  ]);
+}
+
+function reviewDecision(i, list) {
+  if (i >= list.length) { closeDialogue(); return; }
+  const d = list[i];
+  const body = [
+    d.text,
+    "",
+    "Effect: Trust " + d.trust + "   Estate +" + d.estate + (d.money ? "   Gold +"+d.money : ""),
+  ].join("\n");
+  openDialogue(intendantNpc, body, [
+    {text:'Let it stand', action:()=>{ d.reviewed = true; reviewDecision(i+1, list); }},
+    {text:'Overrule it', hint:'restore trust, forgo the gain', action:()=>{
+      applyDecision(d, -1);       // revert his effects
+      d.reviewed = true; d.overruled = true;
+      updateHUD();
+      reviewDecision(i+1, list);
+    }}
+  ]);
 }
 
 // Continue the court day cycle after the summary is dismissed
@@ -2770,6 +2871,25 @@ function renderCourt(dt) {
     }
   }
 
+  // The attendant, waiting in the forecourt with the overnight dispatch
+  if (intendantNpc.active) {
+    const sx = intendantNpc.courtTx * TILE - cam.x;
+    const sy = intendantNpc.courtTy * TILE - cam.y;
+    if (sx > -TILE && sx < CANVAS_SIZE && sy > -TILE && sy < CANVAS_SIZE) {
+      drawNpc(intendantNpc, sx, sy, state.animFrame);
+      const dx = intendantNpc.courtTx*TILE - player.x, dy = intendantNpc.courtTy*TILE - player.y;
+      const near = Math.sqrt(dx*dx+dy*dy) < TILE*2.0;
+      if (state.pendingAttendantReport) {
+        const bob = Math.sin(Date.now()/300)*2;
+        ctx.fillStyle = '#e0a030'; ctx.font = 'bold 13px monospace';
+        ctx.textAlign = 'center'; ctx.fillText('✉', sx+16, sy-4+bob); ctx.textAlign = 'left';
+      } else if (near) {
+        ctx.fillStyle = 'rgba(255,255,150,0.85)'; ctx.font = '10px monospace';
+        ctx.textAlign = 'center'; ctx.fillText('▲', sx+16, sy-6); ctx.textAlign = 'left';
+      }
+    }
+  }
+
   // Player
   drawPlayer(player.x - cam.x, player.y - cam.y, player.walkFrame, player.moving);
 
@@ -2865,9 +2985,11 @@ function renderCourtSummary() {
   ctx.fillText('Royal Favor: +' + s.favorChange, 360, y); y += 24;
   if (s.intendant) {
     ctx.fillStyle = '#9a90b0';
-    ctx.fillText("Intendant Moreau", 360, y); y += 14;
-    ctx.fillText("administers in", 360, y); y += 14;
-    ctx.fillText("your absence.", 360, y);
+    ctx.fillText("Intendant Moreau acted:", 360, y); y += 14;
+    ctx.fillStyle = '#bcae8a'; ctx.font = '5px "Press Start 2P", monospace';
+    for (const ln of wrapText(s.decision || "He administers in your absence.", 30)) { ctx.fillText(ln, 360, y); y += 11; }
+    ctx.font = '6px "Press Start 2P", monospace'; ctx.fillStyle = '#9a90b0'; y += 4;
+    ctx.fillText("Find him at court to review.", 360, y);
   }
 
   ctx.fillStyle = '#f0c840';
@@ -2875,6 +2997,58 @@ function renderCourtSummary() {
   ctx.textAlign = 'center';
   ctx.fillText('Press SPACE to continue', CANVAS_SIZE/2, CANVAS_SIZE - 40);
   ctx.textAlign = 'left';
+}
+
+// Word-wrap helper for canvas text (by character count, monospace-ish)
+function wrapText(str, maxChars) {
+  const words = str.split(' ');
+  const lines = []; let cur = '';
+  for (const w of words) {
+    if ((cur + ' ' + w).trim().length > maxChars) { if (cur) lines.push(cur); cur = w; }
+    else cur = (cur ? cur + ' ' : '') + w;
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+// Point a red arrow from the screen edge toward each NPC who has an open
+// request, so the player knows which way to walk. On-screen NPCs already show
+// a floating "!", so we only draw an arrow when they're off-screen.
+function drawRequestPointers() {
+  const cx = CANVAS_SIZE/2, cy = CANVAS_SIZE/2;
+  const margin = 26;
+  const bob = (Math.sin(Date.now()/250) + 1) * 3;
+  for (let npc of npcs) {
+    if (npc.active === false || !npc.requestId) continue;
+    const tx = npc.tx*TILE + TILE/2 - cam.x;
+    const ty = npc.ty*TILE + TILE/2 - cam.y;
+    const onScreen = tx > 0 && tx < CANVAS_SIZE && ty > 0 && ty < CANVAS_SIZE;
+    if (onScreen) continue;
+    const ang = Math.atan2(ty - cy, tx - cx);
+    // project to the canvas edge along the angle
+    const hx = CANVAS_SIZE/2 - margin, hy = CANVAS_SIZE/2 - margin;
+    const tanA = Math.tan(ang);
+    let ex, ey;
+    if (Math.abs(Math.cos(ang)) * hy >= Math.abs(Math.sin(ang)) * hx) {
+      ex = Math.sign(Math.cos(ang)) * hx;
+      ey = ex * tanA;
+    } else {
+      ey = Math.sign(Math.sin(ang)) * hy;
+      ex = ey / tanA;
+    }
+    const ax = cx + ex, ay = cy + ey;
+    ctx.save();
+    ctx.translate(ax + Math.cos(ang)*bob, ay + Math.sin(ang)*bob);
+    ctx.rotate(ang);
+    ctx.fillStyle = '#e83020';
+    ctx.strokeStyle = '#3a0808';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(14, 0); ctx.lineTo(-8, -9); ctx.lineTo(-2, 0); ctx.lineTo(-8, 9);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
 }
 
 // ---- Croquet minigame overlay ----
@@ -3057,6 +3231,9 @@ function render(dt) {
   const py = player.y - cam.y;
   drawPlayer(px, py, player.walkFrame, player.moving);
 
+  // Red arrows pointing toward anyone with an unattended matter
+  drawRequestPointers();
+
   // Day/night tint
   if (state.tintAlpha > 0) {
     ctx.fillStyle = `rgba(10,5,30,${state.tintAlpha})`;
@@ -3233,13 +3410,21 @@ function update(dt) {
   if (interactPressed) {
     interactPressed = false;
     if (atCourt) {
-      // Find nearest courtier
-      let best = null, bestDist = TILE * 2.0;
-      for (let c of courtiers) {
-        const d = Math.hypot(player.x - c.tx*TILE, player.y - c.ty*TILE);
-        if (d < bestDist) { bestDist = d; best = c; }
+      // The attendant takes priority if you are standing with him
+      let handled = false;
+      if (intendantNpc.active) {
+        const da = Math.hypot(player.x - intendantNpc.courtTx*TILE, player.y - intendantNpc.courtTy*TILE);
+        if (da < TILE * 2.0) { talkToAttendant(); handled = true; }
       }
-      if (best) talkToCourtier(best);
+      if (!handled) {
+        // Find nearest courtier
+        let best = null, bestDist = TILE * 2.0;
+        for (let c of courtiers) {
+          const d = Math.hypot(player.x - c.tx*TILE, player.y - c.ty*TILE);
+          if (d < bestDist) { bestDist = d; best = c; }
+        }
+        if (best) talkToCourtier(best);
+      }
     } else {
       // Find nearest NPC within 2 tiles (skip inactive)
       let best = null, bestDist = TILE * 2.5;
@@ -3338,8 +3523,9 @@ function resetGame() {
   state.daysAwayFromFief=0; state.courtDaysSpent=0; state.blocksUsedToday=0;
   state.intendantInstalled=false; state.intendantMet=false;
   state.courtDaySummary=null; state.travelScreen=null; state.croquet=null; state.shoot=null;
+  state.attendantLog=[]; state.pendingAttendantReport=false;
   for (let npc of npcs) {
-    npc.met=false; npc.requestId=null;
+    npc.met=false; npc.requestId=null; npc.lastResolved=null;
     if (npc.tutorialIdx !== undefined) npc.tutorialIdx=0;
     if (npc.id==='messenger' || npc.id==='intendant') npc.active=false;
     if (npc.id==='messenger') npc.summonsSeen=false;

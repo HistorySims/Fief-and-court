@@ -853,6 +853,7 @@ let state = {
   attendantLog: [],         // intendant's daily decisions while you are at court
   pendingAttendantReport: false, // a fresh dispatch awaits your attention
   gameWon: false,           // the King's stocking has been put on
+  kingsFavour: [],          // whom the King received at his last lever
 };
 
 const SEASONS = ['Spring','Summer','Autumn','Winter'];
@@ -1087,7 +1088,7 @@ function resetCourtiers() {
 
 // The King's chamber. Admittance past the guard is the victory: you become the
 // one chosen to put on the King's stocking at the petit lever.
-const WIN_STATUS = 70;
+const WIN_STATUS = 72;
 const kingsGuard = { name:'Guard of the Chamber', role:"King's Household", courtTx:11, courtTy:3, color:{body:'#2a2a6a', hair:'#2a1a08'} };
 // The King's intimates — the highest of all, admitted to his very side.
 const kingsIntimates = [
@@ -1741,6 +1742,10 @@ function conversationGossip(host) {
   const top = [...courtiers].sort((a,b)=>b.status-a.status)[0];
   const bits = [];
   bits.push("They say " + nameStat(top) + " will be handed the King's shirt at the lever. To stand that near the King is to BE someone. The rest of us merely... attend.");
+  if (state.kingsFavour && state.kingsFavour.length) {
+    const f = state.kingsFavour[state.kingsFavour.length - 1];
+    bits.push("Did you hear? The King received " + f.name + " (" + f.status + ") at his lever. One word in the royal ear and they soar — while the rest of us slip a notch to make the room for them. That is the arithmetic of favour.");
+  }
   const climber = findClimber();
   if (climber) bits.push("Have you watched " + nameStat(climber.low) + "? Forever at " + climber.where + " wherever " + nameStat(climber.high) + " happens to be. Climbing on another's hem. We all see it. It even works — that is what galls.");
   const pair = findNotablePair();
@@ -1771,20 +1776,24 @@ function openGossipPicker(host, near) {
 
 function resolveGossip(host, target, near) {
   const before = state.courtStatus;          // your standing as you speak
+  const tBefore = target.status;
   let msg;
   if (target.status < before) {
     // Belittling a lesser lifts you — but only as high as the company you keep.
-    // You cannot out-rank the room by mocking those beneath it.
+    // You cannot out-rank the room by mocking those beneath it. The rumour bites:
+    // the target's own standing falls.
     const ceiling = Math.max(before, ...near.map(c => c.status));
     state.courtStatus = clampStatus(Math.min(before + 2, ceiling));
+    target.status = clampStatus(target.status - 3);
     msg = (state.courtStatus > before)
-      ? "You let fall a cutting little observation about " + nameStat(target) + ". Fans lift; the circle delights. To diminish a lesser is to remind the room you are not one of them."
-      : "You mock " + nameStat(target) + ", and a few smile — but you are already the most consequential soul in this little circle. Stooping gains you nothing. You must keep grander company.";
+      ? "You let fall a cutting little observation about " + nameStat({name:target.name,status:tBefore}) + ". Fans lift; the circle delights, and word of it spreads — their standing slips. To diminish a lesser is to remind the room you are not one of them."
+      : "You mock " + nameStat({name:target.name,status:tBefore}) + " — their standing slips a little — but you are already the most consequential soul in this little circle. Stooping gains you nothing. You must keep grander company.";
   } else {
-    // Mocking a better only measures the distance between you.
+    // Mocking a better marks you more than it marks them — but a barb still lands.
     const gap = target.status - before;
     state.courtStatus = clampStatus(before - (4 + Math.floor(gap / 10)));
-    msg = "You venture a barb at " + nameStat(target) + " — and the salon goes cold. One does not mock one's betters; it only measures how far beneath them you stand. The remark will travel before you do.";
+    target.status = clampStatus(target.status - 1);
+    msg = "You venture a barb at " + nameStat({name:target.name,status:tBefore}) + " — and the salon goes cold. The remark dents them a little, but it measures how far beneath them you stand, and it will travel before you do.";
   }
   updateHUD();
   const net = Math.round(state.courtStatus - before);
@@ -1825,15 +1834,25 @@ function finishBlock() {
 }
 
 // Status flows toward the level of present company. No explanation is given.
-// YOUR standing drifts strongly toward the level of those you keep company with.
-// The courtiers' standing reflects the King's stable regard and does not erode
-// merely because you stand near them — so the ladder stays a target you climb.
+// YOUR standing drifts strongly toward the level of those you keep company with;
+// the courtiers settle gently toward their own circle's mean (a living ladder).
+// The courtier drift is purely proportional, so it conserves the courtier mean —
+// the King's zero-sum audience is the only thing that re-spreads it.
 function applyStatusAveraging(group) {
   const compMean = group.reduce((s,c)=>s+c.status,0) / group.length; // the company's level
   const pgap = compMean - state.courtStatus;
   if (Math.abs(pgap) >= 0.0001) {
     state.courtStatus = clampStatus(state.courtStatus + Math.sign(pgap) * Math.max(1, Math.abs(pgap) * 0.18));
   }
+  driftCourtiers(group);
+}
+
+// Courtiers ease toward their circle's own mean. Proportional (no minimum step),
+// so the sum — and therefore the mean — is preserved. This prevents inflation.
+function driftCourtiers(group, rate) {
+  rate = rate || 0.08;
+  const m = group.reduce((s,c)=>s+c.status,0) / group.length;
+  for (const c of group) c.status = clampStatus(c.status + (m - c.status) * rate);
 }
 
 // ============================================================
@@ -1958,7 +1977,7 @@ function resolveCompanyPlay(group, won) {
   if (Math.abs(pgap) >= 0.0001) pmove = Math.sign(pgap) * Math.max(1, Math.abs(pgap) * 0.16);
   // Winning is a small flat bonus on top — never enough to outweigh the company
   state.courtStatus = clampStatus(state.courtStatus + pmove + (won ? 2 : 0));
-  // The courtiers' standing is fixed by the King's regard — only yours moves.
+  driftCourtiers(group);   // the company settles toward its own mean (conserving)
   updateHUD();
 }
 
@@ -2607,6 +2626,9 @@ function endCourtDay() {
   state.courtDaysSpent++;
   state.daysAwayFromFief++;
 
+  // The King holds his lever and bestows his favour — the day's great event.
+  kingsAudience();
+
   // Fief background simulation for the day you spent away
   const fiefIncome = Math.floor(state.estate / 10);
   const estateBefore = state.estate, trustBefore = state.trust, moneyBefore = state.money;
@@ -2638,9 +2660,47 @@ function endCourtDay() {
     favorChange: 5,
     intendant: state.intendantInstalled,
     decision: decision ? decision.text : null,
+    favour: state.kingsFavour.slice(),
   };
   updateHUD();
   checkGameOver();
+}
+
+// The King's lever: he raises one or two courtiers (weighted by their influence
+// — the schemers and intimates), and the cost is borne by everyone else. The
+// grant is ZERO-SUM across the court, so the average standing never inflates:
+// to lift one is only ever to lower the rest. A safety floor guarantees that at
+// least one reachable target remains.
+function kingsAudience() {
+  const n = courtiers.length;
+  if (n < 3) return;
+  // weight by influence + a little chance
+  const ranked = [...courtiers].sort((a,b) =>
+    (b.influence + Math.random()*30) - (a.influence + Math.random()*30));
+  const k = Math.random() < 0.5 ? 1 : 2;
+  const favs = ranked.slice(0, k);
+  let granted = 0;
+  const notes = [];
+  for (const f of favs) {
+    const before = f.status;
+    f.status = clampStatus(f.status + 9 + Math.floor(Math.random()*6)); // +9..14, capped at 99
+    granted += f.status - before;
+    notes.push({ name: f.name, status: f.status });
+  }
+  // Dock the granted total from everyone else — weighted by each one's headroom
+  // above the floor, so the total is recovered exactly and no one is floored.
+  // This makes the audience strictly zero-sum: the court mean cannot inflate.
+  const others = courtiers.filter(c => !favs.includes(c));
+  const headroom = others.reduce((s,c) => s + (c.status - 5), 0);
+  if (headroom > 0 && granted > 0) {
+    const ratio = Math.min(1, granted / headroom);
+    for (const c of others) c.status = clampStatus(c.status - (c.status - 5) * ratio);
+  }
+  // Safety floor: a reachable summit must always exist.
+  if (Math.max(...courtiers.map(c => c.status)) < 80) {
+    courtiers.sort((a,b)=>b.status-a.status)[0].status = 80;
+  }
+  state.kingsFavour = notes;
 }
 
 // Apply (dir=+1) or revert (dir=-1) an intendant decision's effects.
@@ -3459,11 +3519,16 @@ function renderCourtSummary() {
   ctx.fillStyle = '#cfc4a8';
   ctx.font = '6px "Press Start 2P", monospace';
   let y = 112;
-  ctx.fillText('Your standing: ' + s.playerStatus, 40, y); y += 18;
+  ctx.fillText('Your standing: ' + s.playerStatus, 40, y); y += 16;
+  if (s.favour && s.favour.length) {
+    ctx.fillStyle = '#f0d040';
+    ctx.fillText("King received: " + s.favour.map(f=>f.name.replace(/^(Mme|Mlle|The|Duc|Comte|Comtesse|Duchesse|Marquise|Baronne|Chevalier|Vicomte|Baron|Princesse) /,'')+' ('+f.status+')').join(', '), 40, y);
+    y += 16; ctx.fillStyle = '#cfc4a8';
+  }
   for (let cs of s.statusSnapshot) {
     const nm = cs.name.length > 18 ? cs.name.slice(0,17)+'…' : cs.name;
     ctx.fillText(nm + ': ' + cs.status, 40, y);
-    y += 14;
+    y += 13;
   }
 
   // Right panel — the fief
@@ -4047,7 +4112,7 @@ function resetGame() {
   state.daysAwayFromFief=0; state.courtDaysSpent=0; state.blocksUsedToday=0;
   state.intendantInstalled=false; state.intendantMet=false;
   state.courtDaySummary=null; state.travelScreen=null; state.croquet=null; state.shoot=null; state.dance=null;
-  state.attendantLog=[]; state.pendingAttendantReport=false;
+  state.attendantLog=[]; state.pendingAttendantReport=false; state.kingsFavour=[];
   for (let npc of npcs) {
     npc.met=false; npc.requestId=null; npc.lastResolved=null;
     if (npc.tutorialIdx !== undefined) npc.tutorialIdx=0;

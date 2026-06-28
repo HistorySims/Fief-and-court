@@ -1089,8 +1089,12 @@ function resetCourtiers() {
 // one chosen to put on the King's stocking at the petit lever.
 const WIN_STATUS = 70;
 const kingsGuard = { name:'Guard of the Chamber', role:"King's Household", courtTx:11, courtTy:3, color:{body:'#2a2a6a', hair:'#2a1a08'} };
-// Two of the King's intimates, drawn flanking the throne (set dressing).
-const kingsIntimates = [ {tx:9, ty:1, color:{body:'#5a1a3a',hair:'#f4f0e4'}}, {tx:14, ty:1, color:{body:'#1a3a5a',hair:'#f4f0e4'}} ];
+// The King's intimates — the highest of all, admitted to his very side.
+const kingsIntimates = [
+  {tx:9,  ty:1, name:'The Grand Dauphin', status:95, color:{body:'#5a1a3a',hair:'#f4f0e4'}},
+  {tx:14, ty:1, name:'Monsieur',          status:90, color:{body:'#1a3a5a',hair:'#f4f0e4'}},
+];
+const KING_STATUS = 100;
 
 function talkToKingsGuard() {
   if (state.courtStatus >= WIN_STATUS) {
@@ -1679,12 +1683,17 @@ function showArmandTutorial(idx) {
 // ============================================================
 function talkToCourtier(c) {
   c.met = true;
-  const lines = courtierLine(c);
-  const text = lines[Math.floor(Math.random() * lines.length)];
   if (state.blocksUsedToday >= 4) {
+    const lines = courtierLine(c);
+    const text = lines[Math.floor(Math.random() * lines.length)];
     openDialogue(c, text + "\n\n(The day at court is spent. You have no more time to give.)", [{text:'Withdraw', action:closeDialogue}]);
     return;
   }
+  // In the salons of the Hall of Mirrors, the hour is spent in conversation.
+  if (c.activity === 'hall') { startConversation(c, circleAround(c)); return; }
+  // Out of doors, an invitation to the game itself.
+  const lines = courtierLine(c);
+  const text = lines[Math.floor(Math.random() * lines.length)];
   const verb = c.activity === 'croquet' ? 'Join the croquet'
              : c.activity === 'shoot'   ? 'Join the shooting party'
              : c.activity === 'dance'   ? 'Join the dance'
@@ -1696,6 +1705,93 @@ function talkToCourtier(c) {
 }
 
 const clampStatus = v => Math.max(5, Math.min(99, Math.round(v)));
+
+// ---- Salon conversation & gossip --------------------------------------------
+const nameStat = c => c.name + ' (' + Math.round(c.status) + ')';
+function activityWord(a) {
+  return a === 'croquet' ? 'the croquet lawn' : a === 'shoot' ? 'the shooting party'
+       : a === 'dance' ? 'the ball' : 'the salon';
+}
+// A low courtier currently keeping company with a high one — a visible climber.
+function findClimber() {
+  for (const c of [...courtiers].sort((a,b)=>a.status-b.status)) {
+    if (c.status >= 55) break;
+    const mates = courtiers.filter(o => o !== c && o.spot === c.spot && o.status >= 62);
+    if (mates.length) return { low:c, high: mates.sort((a,b)=>b.status-a.status)[0], where: activityWord(c.activity) };
+  }
+  return null;
+}
+// Two courtiers sharing a ground with a wide status gap — a notable pairing.
+function findNotablePair() {
+  const grounds = {};
+  for (const c of courtiers) { (grounds[c.spot] = grounds[c.spot] || []).push(c); }
+  let best = null;
+  for (const k in grounds) {
+    const g = grounds[k]; if (g.length < 2) continue;
+    const hi = [...g].sort((a,b)=>b.status-a.status)[0];
+    const lo = [...g].sort((a,b)=>a.status-b.status)[0];
+    if (hi.status - lo.status >= 14 && (!best || hi.status > best.a.status)) best = { a:hi, b:lo, where: activityWord(hi.activity) };
+  }
+  return best;
+}
+// Build a gossip line from the live state of the court. Teaches the rules:
+// access to the King is everything; you become whom you are seen beside.
+function conversationGossip(host) {
+  const others = courtiers.filter(c => c !== host);
+  const top = [...courtiers].sort((a,b)=>b.status-a.status)[0];
+  const bits = [];
+  bits.push("They say " + nameStat(top) + " will be handed the King's shirt at the lever. To stand that near the King is to BE someone. The rest of us merely... attend.");
+  const climber = findClimber();
+  if (climber) bits.push("Have you watched " + nameStat(climber.low) + "? Forever at " + climber.where + " wherever " + nameStat(climber.high) + " happens to be. Climbing on another's hem. We all see it. It even works — that is what galls.");
+  const pair = findNotablePair();
+  if (pair) bits.push(nameStat(pair.b) + " was seen at " + pair.where + " beside " + nameStat(pair.a) + ". People are still talking. That is how it is done, you understand — you become whom you are seen with.");
+  const peer = others.find(c => Math.abs(c.status - state.courtStatus) <= 6);
+  if (peer) bits.push("And " + nameStat(peer) + " — no better born than you or I, yet always underfoot of the great. It does grate, does it not?");
+  shuffle(bits);
+  return bits.slice(0, 2).join("\n\n");
+}
+
+function startConversation(host, near) {
+  openDialogue(host, conversationGossip(host), [
+    {text:'Listen, and be seen agreeing', hint:'spend the hour here', action:()=>{ closeDialogue(); applyStatusAveraging(near); finishBlock(); }},
+    {text:'Spread a rumour…', hint:'risk a barb', action:()=>openGossipPicker(host, near)},
+    {text:'Move on', action:closeDialogue}
+  ]);
+}
+
+function openGossipPicker(host, near) {
+  const others = courtiers.filter(c => c !== host);
+  const below = others.filter(c => c.status <  state.courtStatus).sort((a,b)=>b.status-a.status);
+  const above = others.filter(c => c.status >= state.courtStatus).sort((a,b)=>a.status-b.status);
+  const picks = [below[0], below[1], above[0], above[1]].filter(Boolean);
+  const buttons = picks.map(t => ({ text: nameStat(t), action: ()=>resolveGossip(host, t, near) }));
+  buttons.push({ text:'…hold your tongue', action:()=>startConversation(host, near) });
+  openDialogue(host, "Whom shall we discuss? Choose carefully — the room is always listening, and it remembers.", buttons);
+}
+
+function resolveGossip(host, target, near) {
+  const before = state.courtStatus;          // your standing as you speak
+  let msg;
+  if (target.status < before) {
+    // Belittling a lesser lifts you — but only as high as the company you keep.
+    // You cannot out-rank the room by mocking those beneath it.
+    const ceiling = Math.max(before, ...near.map(c => c.status));
+    state.courtStatus = clampStatus(Math.min(before + 2, ceiling));
+    msg = (state.courtStatus > before)
+      ? "You let fall a cutting little observation about " + nameStat(target) + ". Fans lift; the circle delights. To diminish a lesser is to remind the room you are not one of them."
+      : "You mock " + nameStat(target) + ", and a few smile — but you are already the most consequential soul in this little circle. Stooping gains you nothing. You must keep grander company.";
+  } else {
+    // Mocking a better only measures the distance between you.
+    const gap = target.status - before;
+    state.courtStatus = clampStatus(before - (4 + Math.floor(gap / 10)));
+    msg = "You venture a barb at " + nameStat(target) + " — and the salon goes cold. One does not mock one's betters; it only measures how far beneath them you stand. The remark will travel before you do.";
+  }
+  updateHUD();
+  const net = Math.round(state.courtStatus - before);
+  openDialogue(host, msg + "\n\nYour standing: " + (net >= 0 ? '+' : '') + net, [
+    {text:'…', action:()=>{ closeDialogue(); finishBlock(); }}
+  ]);
+}
 
 // The circle present around a chosen courtier — everyone within 3 tiles.
 function circleAround(c) {
@@ -3157,16 +3253,21 @@ function drawCourtier(c, sx, sy, animFrame) {
   ctx.fillRect(sx+17, sy+10, 2, 2);
 
   // Status chip floating above
-  const s = Math.round(c.status);
-  let chipCol = s >= 60 ? '#d4a020' : (s >= 40 ? '#a0a0b0' : '#6a6060');
+  drawStatusChip(sx+16, sy-12, c.status);
+}
+
+// A floating status chip, centred horizontally on cxp with its top at topY.
+function drawStatusChip(cxp, topY, value) {
+  const s = Math.round(value);
+  const col = s >= 90 ? '#f0d040' : s >= 60 ? '#d4a020' : (s >= 40 ? '#a0a0b0' : '#6a6060');
   ctx.fillStyle = 'rgba(0,0,0,0.65)';
-  ctx.fillRect(sx+2, sy-12, 28, 11);
-  ctx.fillStyle = chipCol;
-  ctx.fillRect(sx+2, sy-12, 28, 2);
+  ctx.fillRect(cxp-14, topY, 28, 11);
+  ctx.fillStyle = col;
+  ctx.fillRect(cxp-14, topY, 28, 2);
   ctx.fillStyle = '#f4ecd8';
   ctx.font = '7px "Press Start 2P", monospace';
   ctx.textAlign = 'center';
-  ctx.fillText(String(s), sx+16, sy-3);
+  ctx.fillText(String(s), cxp, topY+9);
   ctx.textAlign = 'left';
 }
 
@@ -3197,8 +3298,10 @@ function drawThroneScene() {
     // eyes
     ctx.fillStyle = '#1a1010';
     ctx.fillRect(kx-4, ky+1, 2, 2); ctx.fillRect(kx+2, ky+1, 2, 2);
+    // The King's own standing — the unreachable 100
+    drawStatusChip(kx, ky-28, KING_STATUS);
   }
-  // Intimates flanking the dais
+  // Intimates flanking the dais — the very highest, at the King's side
   for (const m of kingsIntimates) {
     const sx = m.tx*TILE - cam.x, sy = m.ty*TILE - cam.y;
     if (sx > -TILE && sx < CANVAS_SIZE && sy > -TILE && sy < CANVAS_SIZE) {
@@ -3206,6 +3309,7 @@ function drawThroneScene() {
       ctx.fillStyle = '#e8c090'; ctx.fillRect(sx+11, sy+4, 10, 10);
       ctx.fillStyle = m.color.hair; ctx.fillRect(sx+9, sy+2, 14, 7); // wig
       ctx.fillStyle = '#1a1010'; ctx.fillRect(sx+13, sy+8, 2, 2); ctx.fillRect(sx+17, sy+8, 2, 2);
+      drawStatusChip(sx+16, sy-12, m.status);
     }
   }
   // The guard of the chamber

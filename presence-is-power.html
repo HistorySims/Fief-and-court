@@ -246,6 +246,42 @@ body {
   padding: 10px 20px;
   cursor: pointer;
 }
+#win-screen {
+  position: absolute;
+  inset: 0;
+  background: rgba(12,9,2,0.94);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+}
+#win-title {
+  font-size: 13px;
+  color: #f0c840;
+  text-align: center;
+  text-shadow: 2px 2px 0 #3a2200;
+  line-height: 1.6;
+}
+#win-reason {
+  font-size: 7px;
+  color: #e8d5a3;
+  text-align: center;
+  max-width: 380px;
+  line-height: 2;
+}
+#win-btn {
+  background: #5a3e1a;
+  border: 3px solid #f0c840;
+  color: #f0c840;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  padding: 10px 22px;
+  cursor: pointer;
+}
+#win-btn:hover { background: #8b6a2a; }
 /* Touch controls */
 #touch-controls {
   width: 640px;
@@ -371,6 +407,11 @@ body {
     <div id="gameover-reason"></div>
     <button id="gameover-btn" onclick="resetGame()">TRY AGAIN</button>
   </div>
+  <div id="win-screen">
+    <div id="win-title">PRESENCE IS POWER</div>
+    <div id="win-reason">You were chosen to put on the King's stocking. The greatest men in France watched, and envied you. You were absent from your fief, and present at Versailles — and that is what the world rewarded. You have won.</div>
+    <button id="win-btn" onclick="resetGame()">PLAY AGAIN</button>
+  </div>
 </div>
 <div id="touch-controls">
   <div id="dpad">
@@ -405,7 +446,7 @@ const T = {
   MARBLE_FLOOR:34, MARBLE_WALL:35, GOLD_TRIM:36,
   GARDEN_BED:37, FOUNTAIN:38, HEDGE_FORMAL:39,
   CANAL:40, GRAVEL:41, PARQUET:42, MIRROR_WALL:43,
-  TOPIARY:44, ARCH:45, THRONE:46
+  TOPIARY:44, ARCH:45, THRONE:46, BALUSTRADE:47, DANCE_FLOOR:48
 };
 
 const MAP_W = 30, MAP_H = 40;
@@ -629,9 +670,15 @@ function buildCourtMap() {
     setCourtTile(4, y, T.GOLD_TRIM);
     setCourtTile(COURT_W-5, y, T.GOLD_TRIM);
   }
-  // Throne at top center (the King — visible, inaccessible)
+  // Throne at top center (the King — visible, behind the guarded threshold)
   setCourtTile(11, 1, T.THRONE);
   setCourtTile(12, 1, T.THRONE);
+  // The balustrade of the King's chamber — only the highest are admitted past it
+  for (let x = 9; x <= 14; x++) setCourtTile(x, 2, T.BALUSTRADE);
+  // The ballroom floor — lower-left of the hall, beneath a chandelier
+  for (let x = 5; x <= 9; x++)
+    for (let y = 6; y <= 7; y++)
+      setCourtTile(x, y, T.DANCE_FLOOR);
   // Side mirror walls
   for (let y = 2; y <= 6; y++) {
     setCourtTile(1, y, T.MIRROR_WALL);
@@ -740,6 +787,8 @@ function getTileColor(t, animFrame, season) {
     case T.TOPIARY: return '#2a6a1a';
     case T.ARCH: return '#9a8870';
     case T.THRONE: return '#7a1818';
+    case T.BALUSTRADE: return '#c8a030';
+    case T.DANCE_FLOOR: return '#d8b878';
     default: return '#4a7a2a';
   }
 }
@@ -752,7 +801,7 @@ function isSolid(t) {
 function isCourtSolid(t) {
   // ARCH is a doorway — walkable. Everything structural blocks.
   return [T.MARBLE_WALL, T.MIRROR_WALL, T.HEDGE_FORMAL,
-          T.CANAL, T.TOPIARY, T.FOUNTAIN, T.THRONE].includes(t);
+          T.CANAL, T.TOPIARY, T.FOUNTAIN, T.THRONE, T.BALUSTRADE].includes(t);
 }
 function isSolidW(t) {
   return state.currentWorld === 'court' ? isCourtSolid(t) : isSolid(t);
@@ -800,8 +849,10 @@ let state = {
   travelScreen: null,       // {phase, timer, total}
   croquet: null,            // croquet minigame state machine
   shoot: null,              // shooting-party minigame state machine
+  dance: null,              // court-ball (DDR) minigame state machine
   attendantLog: [],         // intendant's daily decisions while you are at court
   pendingAttendantReport: false, // a fresh dispatch awaits your attention
+  gameWon: false,           // the King's stocking has been put on
 };
 
 const SEASONS = ['Spring','Summer','Autumn','Winter'];
@@ -1012,20 +1063,68 @@ const intendantNpc = npcs.find(n => n.id === 'intendant');
 // ============================================================
 // COURTIERS (at Versailles)
 // ============================================================
+// status = standing in the King's regard; female courtiers held some of the
+// greatest power at Versailles (the maîtresses, the salonnières, Maintenon).
 const COURTIER_DEFS = [
-  {id:'bourbon',     name:'Duc de Bourbon',          status:82, influence:70, tx:10, ty:4, color:{body:'#1a2a6a',hair:'#f4f0e4'}},
-  {id:'sevigne',     name:'Marquise de Sévigné',     status:75, influence:45, tx:14, ty:3, color:{body:'#6a1a4a',hair:'#f4f0e4'}},
+  {id:'montespan',   name:'Mme de Montespan',        status:80, influence:90, female:true, tx:13, ty:4, color:{body:'#7a1a3a',hair:'#f4f0e4'}},
+  {id:'bourbon',     name:'Duc de Bourbon',          status:78, influence:70, tx:10, ty:4, color:{body:'#1a2a6a',hair:'#f4f0e4'}},
+  {id:'sevigne',     name:'Mme de Sévigné',          status:72, influence:48, female:true, tx:14, ty:3, color:{body:'#6a1a4a',hair:'#f4f0e4'}},
   {id:'toulouse',    name:'Comte de Toulouse',       status:68, influence:80, tx:8,  ty:5, color:{body:'#1a4a2a',hair:'#f4f0e4'}},
-  {id:'maintenon',   name:'Baronne de Maintenon',    status:60, influence:85, tx:16, ty:4, color:{body:'#4a3a1a',hair:'#f4f0e4'}},
-  {id:'lorraine',    name:'Chevalier de Lorraine',   status:55, influence:50, tx:12, ty:6, color:{body:'#2a1a4a',hair:'#f4f0e4'}},
+  {id:'maintenon',   name:'Mme de Maintenon',        status:62, influence:88, female:true, tx:16, ty:4, color:{body:'#4a3a1a',hair:'#f4f0e4'}},
+  {id:'palatine',    name:'Princesse Palatine',      status:58, influence:48, female:true, tx:12, ty:6, color:{body:'#2a4a6a',hair:'#e8e4d8'}},
+  {id:'lorraine',    name:'Chevalier de Lorraine',   status:54, influence:50, tx:7,  ty:6, color:{body:'#2a1a4a',hair:'#f4f0e4'}},
+  {id:'fontanges',   name:'Comtesse de Fontanges',   status:50, influence:35, female:true, tx:17, ty:5, color:{body:'#6a2a5a',hair:'#f4f0e4'}},
   {id:'turenne',     name:'Vicomte de Turenne',      status:45, influence:35, tx:9,  ty:7, color:{body:'#3a2a1a',hair:'#d8c090'}},
-  {id:'longueville', name:'Duchesse de Longueville', status:38, influence:25, tx:15, ty:6, color:{body:'#5a1a3a',hair:'#d8c090'}},
+  {id:'longueville', name:'Duchesse de Longueville', status:38, influence:25, female:true, tx:15, ty:6, color:{body:'#5a1a3a',hair:'#d8c090'}},
+  {id:'lavalliere',  name:'Mlle de La Vallière',     status:26, influence:15, female:true, tx:6,  ty:7, color:{body:'#3a3a5a',hair:'#d8c090'}},
   {id:'pointis',     name:'Baron de Pointis',        status:22, influence:15, tx:11, ty:7, color:{body:'#3a3a2a',hair:'#d8c090'}},
 ];
 let courtiers = COURTIER_DEFS.map(c => ({...c, color:{...c.color}, met:false, facingPlayer:false, isCourtier:true, activity:'hall', spot:'prime'}));
 
 function resetCourtiers() {
   courtiers = COURTIER_DEFS.map(c => ({...c, color:{...c.color}, met:false, facingPlayer:false, isCourtier:true, activity:'hall', spot:'prime'}));
+}
+
+// The King's chamber. Admittance past the guard is the victory: you become the
+// one chosen to put on the King's stocking at the petit lever.
+const WIN_STATUS = 70;
+const kingsGuard = { name:'Guard of the Chamber', role:"King's Household", courtTx:11, courtTy:3, color:{body:'#2a2a6a', hair:'#2a1a08'} };
+// Two of the King's intimates, drawn flanking the throne (set dressing).
+const kingsIntimates = [ {tx:9, ty:1, color:{body:'#5a1a3a',hair:'#f4f0e4'}}, {tx:14, ty:1, color:{body:'#1a3a5a',hair:'#f4f0e4'}} ];
+
+function talkToKingsGuard() {
+  if (state.courtStatus >= WIN_STATUS) {
+    closeDialogue();
+    triggerWin();
+    return;
+  }
+  const gap = WIN_STATUS - state.courtStatus;
+  let line;
+  if (gap > 30) {
+    line = "The guard's eyes pass over you and find nothing to hold them. \"The King's chamber is not for... \" he searches for the kind word, and does not find it, \"...for everyone, my lord.\"";
+  } else if (gap > 12) {
+    line = "\"The petit lever is for the King's intimates, my lord. You are not yet among them. Closer than you were. Not yet.\"";
+  } else {
+    line = "\"Almost, my lord. One more rung. The King has begun to ask the room who you are. Come to me when he no longer needs to ask.\"";
+  }
+  openDialogue(kingsGuard, line, [{text:'Withdraw', action:closeDialogue}]);
+}
+
+function triggerWin() {
+  state.gameWon = true;
+  showPopup("The Petit Lever",
+    "The guard steps aside. You pass the balustrade into the King's bedchamber. A dozen of the greatest names in France line the walls — princes, a duke, a cardinal — and not one of them has been chosen for what you are about to do.",
+    () => showPopup("The Honour",
+      "The premier valet de chambre presents the royal stocking upon a cushion of silk. The King's gaze travels the room, unhurried, and settles upon you. \"This one,\" he says. The chamber stiffens with envy.",
+      () => showPopup("Presence",
+        "You kneel. You draw the silk stocking over the royal foot — slowly, perfectly, as though nothing in the world were lighter or heavier. It is the most important thing you will ever do. It is putting on a sock. It is everything.",
+        () => showWinScreen())));
+}
+
+function showWinScreen() {
+  state.gameOver = true;
+  const sc = document.getElementById('win-screen');
+  if (sc) sc.style.display = 'flex';
 }
 
 // The gathering-places of the court. Each holds a cluster of courtiers and an
@@ -1037,6 +1136,7 @@ const COURT_LOCATIONS = [
   { id:'right', activity:'hall',    spots:[ [16,4],[17,5],[15,5],[17,3] ] },
   { id:'lawn',  activity:'croquet', spots:[ [5,11],[7,11],[5,13],[7,13],[6,12] ] },  // west garden — croquet
   { id:'butts', activity:'shoot',   spots:[ [15,11],[17,11],[19,11],[16,13],[18,13] ] }, // east garden — shooting party
+  { id:'ball',  activity:'dance',   spots:[ [5,6],[7,6],[9,6],[6,7],[8,7] ] },          // the ballroom floor
 ];
 
 // Each court day the cliques re-form. The high-status set's "hot" gathering
@@ -1050,19 +1150,22 @@ function redistributeCourtiers() {
   const place = (c, li) => { const [tx,ty]=slots[li].shift(); c.tx=tx; c.ty=ty; c.activity=COURT_LOCATIONS[li].activity; c.spot=COURT_LOCATIONS[li].id; };
   const placeAnywhere = (c) => { for (let i=0;i<slots.length;i++) if (slots[i].length) { place(c,i); return; } };
   const sorted = [...courtiers].sort((a,b)=>b.status-a.status);
-  const hotIds = ['prime','lawn','butts'];
+  const hotIds = ['prime','lawn','butts','ball'];
   const hot = idOf(hotIds[state.courtDaysSpent % hotIds.length]);
   // The high-status set chases the hot gathering
   for (const c of sorted.filter(c=>c.status>=60)) {
     if (slots[hot].length) place(c, hot); else placeAnywhere(c);
   }
-  // Everyone else spreads round-robin so the grounds usually have bodies
-  const ring = COURT_LOCATIONS.map((_,i)=>i);
-  let r = 0;
-  for (const c of sorted.filter(c=>c.status<60)) {
+  // Everyone else gives EVERY other ground at least one body, so croquet and the
+  // shooting party are always available — the cool set just rotates which it graces.
+  const others = COURT_LOCATIONS.map((_,i)=>i).filter(i => i !== hot);
+  const rest = sorted.filter(c=>c.status<60);
+  let oi = 0;
+  for (const c of rest) {
     let placed = false;
-    for (let t = 0; t < ring.length; t++) {
-      const li = ring[(r++) % ring.length];
+    // try to seed an as-yet-unused other ground first
+    for (let t = 0; t < others.length; t++) {
+      const li = others[(oi++) % others.length];
       if (slots[li].length) { place(c, li); placed=true; break; }
     }
     if (!placed) placeAnywhere(c);
@@ -1584,6 +1687,7 @@ function talkToCourtier(c) {
   }
   const verb = c.activity === 'croquet' ? 'Join the croquet'
              : c.activity === 'shoot'   ? 'Join the shooting party'
+             : c.activity === 'dance'   ? 'Join the dance'
              : 'Spend the hour here';
   openDialogue(c, text, [
     {text:verb, hint:'uses 1 of 4 blocks', action:()=>{ closeDialogue(); spendBlock(c); }},
@@ -1609,6 +1713,7 @@ function spendBlock(c) {
   // The activity depends on where the company has gathered.
   if (c.activity === 'croquet')    startCroquet(c, near);
   else if (c.activity === 'shoot') startShoot(c, near);
+  else if (c.activity === 'dance') startDance(c, near);
   else { applyStatusAveraging(near); finishBlock(); }
 }
 
@@ -1623,20 +1728,15 @@ function finishBlock() {
   }
 }
 
-// Status flows toward the mean of present company. No explanation is given.
+// Status flows toward the level of present company. No explanation is given.
+// YOUR standing drifts strongly toward the level of those you keep company with.
+// The courtiers' standing reflects the King's stable regard and does not erode
+// merely because you stand near them — so the ladder stays a target you climb.
 function applyStatusAveraging(group) {
-  const all = [...group.map(c=>c.status), state.courtStatus];
-  const mean = all.reduce((s,v)=>s+v,0) / all.length;
-  for (let c of group) {
-    const gap = mean - c.status;
-    if (Math.abs(gap) < 0.0001) continue;
-    const move = Math.sign(gap) * Math.max(1, Math.abs(gap) * 0.1);
-    c.status = clampStatus(c.status + move);
-  }
-  const pgap = mean - state.courtStatus;
+  const compMean = group.reduce((s,c)=>s+c.status,0) / group.length; // the company's level
+  const pgap = compMean - state.courtStatus;
   if (Math.abs(pgap) >= 0.0001) {
-    const pmove = Math.sign(pgap) * Math.max(1, Math.abs(pgap) * 0.1);
-    state.courtStatus = clampStatus(state.courtStatus + pmove);
+    state.courtStatus = clampStatus(state.courtStatus + Math.sign(pgap) * Math.max(1, Math.abs(pgap) * 0.18));
   }
 }
 
@@ -1757,18 +1857,12 @@ function pseudoRand(seed) {
 function resolveCompanyPlay(group, won) {
   const groupMean = group.reduce((s,c)=>s+c.status,0) / group.length;
   const pgap = groupMean - state.courtStatus;
-  // You are pulled 12% of the way toward the level of those you spent the hour with
+  // You are pulled strongly toward the level of those you spent the hour with
   let pmove = 0;
-  if (Math.abs(pgap) >= 0.0001) pmove = Math.sign(pgap) * Math.max(1, Math.abs(pgap) * 0.12);
+  if (Math.abs(pgap) >= 0.0001) pmove = Math.sign(pgap) * Math.max(1, Math.abs(pgap) * 0.16);
   // Winning is a small flat bonus on top — never enough to outweigh the company
   state.courtStatus = clampStatus(state.courtStatus + pmove + (won ? 2 : 0));
-  // A victory also tugs the company a touch toward you
-  if (won) {
-    for (const c of group) {
-      const g = state.courtStatus - c.status;
-      if (Math.abs(g) >= 0.0001) c.status = clampStatus(c.status + Math.sign(g) * Math.max(1, Math.abs(g) * 0.06));
-    }
-  }
+  // The courtiers' standing is fixed by the King's regard — only yours moves.
   updateHUD();
 }
 
@@ -1993,6 +2087,196 @@ function renderShoot() {
     ctx.fillText('But the morning was spent in their company.', CANVAS_SIZE/2, CANVAS_SIZE/2+26);
     ctx.fillStyle = '#fff4d0'; ctx.font='7px "Press Start 2P", monospace';
     ctx.fillText('SPACE to return to the gardens', CANVAS_SIZE/2, CANVAS_SIZE/2+46);
+  }
+  ctx.textAlign = 'left';
+}
+
+// ============================================================
+// THE DANCE — a court ball, in the manner of the menuet (and of DDR).
+// Arrows rise through four lanes; strike each direction as it crosses the line.
+// Your figure is only a thumb on the scale — the company you dance among is
+// what moves your standing. ~30s.
+// ============================================================
+const DANCE_DURATION = 30000;
+const DANCE_WIN = 14;            // a graceful showing
+const DANCE_LANES = [            // lane → direction key
+  { dir:'left',  x:170, glyph:'◀' },
+  { dir:'down',  x:270, glyph:'▼' },
+  { dir:'up',    x:370, glyph:'▲' },
+  { dir:'right', x:470, glyph:'▶' },
+];
+const DANCE_TARGET_Y = 120;      // the receptor line
+const DANCE_SPEED = 0.28;        // px/ms the arrows rise
+const DANCE_WINDOW = 34;         // hit tolerance
+
+function startDance(host, group) {
+  state.dance = {
+    host, group,
+    phase: 'intro',
+    timeLeft: DANCE_DURATION,
+    arrows: [],
+    spawnTimer: 0,
+    hits: 0, misses: 0, combo: 0, bestCombo: 0,
+    flash: {},                   // per-lane hit/miss flash timers
+    prev: { up:false, down:false, left:false, right:false },
+    seed: 3 + group.length + Math.round(host.status),
+    sparkle: 0,
+  };
+}
+
+function heldDir() {
+  return {
+    up:    !!(keys['ArrowUp']    || keys['w'] || keys['W'] || touchDirs.up),
+    down:  !!(keys['ArrowDown']  || keys['s'] || keys['S'] || touchDirs.down),
+    left:  !!(keys['ArrowLeft']  || keys['a'] || keys['A'] || touchDirs.left),
+    right: !!(keys['ArrowRight'] || keys['d'] || keys['D'] || touchDirs.right),
+  };
+}
+
+function updateDance(dt) {
+  const d = state.dance;
+  if (d.phase === 'intro') {
+    if (interactPressed) { interactPressed = false; d.phase = 'active'; }
+    return;
+  }
+  if (d.phase === 'result') {
+    if (interactPressed) {
+      interactPressed = false;
+      const won = d.hits >= DANCE_WIN;
+      const group = d.group;
+      state.dance = null;
+      resolveCompanyPlay(group, won);
+      finishBlock();
+    }
+    return;
+  }
+
+  // active
+  d.timeLeft -= dt;
+  d.sparkle += dt;
+
+  // Spawn arrows on a steady beat
+  d.spawnTimer -= dt;
+  if (d.spawnTimer <= 0 && d.timeLeft > 1500) {
+    d.seed++;
+    const lane = Math.floor(pseudoRand(d.seed * 4.13) * DANCE_LANES.length) % DANCE_LANES.length;
+    d.arrows.push({ lane, y: CANVAS_SIZE + 10, hit:false });
+    d.spawnTimer = 520 + pseudoRand(d.seed * 2.7) * 260;
+  }
+
+  // Rise; a note that passes the line unhit is a miss
+  for (const a of d.arrows) {
+    a.y -= DANCE_SPEED * dt;
+    if (!a.hit && a.y < DANCE_TARGET_Y - DANCE_WINDOW - 4) {
+      a.hit = 'missed'; d.misses++; d.combo = 0;
+      d.flash[a.lane] = { t: 200, miss: true };
+    }
+  }
+  d.arrows = d.arrows.filter(a => a.y > -20);
+
+  // Edge-detected direction presses → strike the nearest note in that lane
+  const cur = heldDir();
+  for (let li = 0; li < DANCE_LANES.length; li++) {
+    const dir = DANCE_LANES[li].dir;
+    if (cur[dir] && !d.prev[dir]) {
+      // find nearest unhit note in this lane within the window
+      let best = null, bd = DANCE_WINDOW;
+      for (const a of d.arrows) {
+        if (a.lane !== li || a.hit) continue;
+        const dist = Math.abs(a.y - DANCE_TARGET_Y);
+        if (dist < bd) { bd = dist; best = a; }
+      }
+      if (best) {
+        best.hit = 'good'; d.hits++; d.combo++; d.bestCombo = Math.max(d.bestCombo, d.combo);
+        d.flash[dir] = { t: 200 };
+      }
+    }
+  }
+  d.prev = cur;
+
+  for (const k in d.flash) { d.flash[k].t -= dt; if (d.flash[k].t <= 0) delete d.flash[k]; }
+
+  if (d.timeLeft <= 0) d.phase = 'result';
+}
+
+function renderDance() {
+  const d = state.dance;
+  // Ballroom — warm parquet and candlelight
+  const g = ctx.createLinearGradient(0,0,0,CANVAS_SIZE);
+  g.addColorStop(0,'#2a2038'); g.addColorStop(1,'#4a3826');
+  ctx.fillStyle = g; ctx.fillRect(0,0,CANVAS_SIZE,CANVAS_SIZE);
+  // chandelier glow up top
+  const sp = (Math.sin(d.sparkle/200)+1)/2;
+  ctx.fillStyle = `rgba(255,240,180,${0.10+0.06*sp})`;
+  ctx.beginPath(); ctx.arc(CANVAS_SIZE/2, 30, 90, 0, Math.PI*2); ctx.fill();
+
+  // Lanes + receptors
+  for (const lane of DANCE_LANES) {
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.fillRect(lane.x-24, 0, 48, CANVAS_SIZE);
+    // receptor ring
+    const fl = d.flash[lane.dir];
+    ctx.strokeStyle = fl ? (fl.miss ? '#c84030' : '#70e0a0') : 'rgba(240,220,180,0.7)';
+    ctx.lineWidth = fl ? 4 : 2;
+    ctx.strokeRect(lane.x-18, DANCE_TARGET_Y-18, 36, 36);
+    ctx.fillStyle = fl ? (fl.miss ? '#c84030' : '#70e0a0') : 'rgba(240,220,180,0.55)';
+    ctx.font = '18px monospace'; ctx.textAlign='center';
+    ctx.fillText(lane.glyph, lane.x, DANCE_TARGET_Y+7);
+  }
+
+  // Notes
+  for (const a of d.arrows) {
+    const lane = DANCE_LANES[a.lane];
+    if (a.hit === 'good') continue;
+    ctx.fillStyle = a.hit === 'missed' ? 'rgba(150,70,60,0.5)' : '#f0c850';
+    ctx.font = '20px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(lane.glyph, lane.x, a.y);
+  }
+
+  // The company you are dancing among
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(8,6,12,0.7)';
+  ctx.fillRect(20, 300, 200, 26 + d.group.length*13);
+  ctx.fillStyle = '#e8e0c0'; ctx.font = '6px "Press Start 2P", monospace';
+  ctx.fillText('DANCING WITH:', 30, 318);
+  let gy = 332;
+  for (const c of d.group) {
+    const nm = c.name.length > 18 ? c.name.slice(0,17)+'…' : c.name;
+    const chip = c.status >= 60 ? '#d4a020' : (c.status >= 40 ? '#a0a0b0' : '#6a6060');
+    ctx.fillStyle = chip; ctx.fillText(c.status + '  ' + nm, 30, gy); gy += 13;
+  }
+
+  // Score
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f4ecd0'; ctx.font = '9px "Press Start 2P", monospace';
+  ctx.fillText('FIGURES ' + d.hits, CANVAS_SIZE/2, 60);
+  if (d.combo > 2) { ctx.fillStyle = '#f0c850'; ctx.font='7px "Press Start 2P", monospace'; ctx.fillText(d.combo + ' in step', CANVAS_SIZE/2, 78); }
+  // timer
+  const pct = Math.max(0, d.timeLeft/DANCE_DURATION);
+  ctx.fillStyle='rgba(0,0,0,0.4)'; ctx.fillRect(CANVAS_SIZE/2-100, 86, 200, 7);
+  ctx.fillStyle = pct<0.25?'#c03020':'#b070d0'; ctx.fillRect(CANVAS_SIZE/2-100, 86, 200*pct, 7);
+
+  // prompts / overlays
+  if (d.phase === 'intro') {
+    ctx.fillStyle='rgba(20,14,30,0.82)'; ctx.fillRect(CANVAS_SIZE/2-230, CANVAS_SIZE/2-46, 460, 92);
+    ctx.fillStyle='#f0e4c0'; ctx.font='10px "Press Start 2P", monospace';
+    ctx.fillText('THE COURT BALL', CANVAS_SIZE/2, CANVAS_SIZE/2-18);
+    ctx.font='6px "Press Start 2P", monospace'; ctx.fillStyle='#ccbfe0';
+    ctx.fillText('Strike each arrow as it crosses the line', CANVAS_SIZE/2, CANVAS_SIZE/2+4);
+    ctx.fillText('Arrow keys / D-pad to dance', CANVAS_SIZE/2, CANVAS_SIZE/2+20);
+    ctx.fillStyle='#fff4d0'; ctx.font='7px "Press Start 2P", monospace';
+    ctx.fillText('Press SPACE to take the floor', CANVAS_SIZE/2, CANVAS_SIZE/2+40);
+  } else if (d.phase === 'result') {
+    const won = d.hits >= DANCE_WIN;
+    ctx.fillStyle='rgba(20,14,30,0.85)'; ctx.fillRect(CANVAS_SIZE/2-230, CANVAS_SIZE/2-52, 460, 104);
+    ctx.fillStyle = won?'#f0d040':'#c89070'; ctx.font='11px "Press Start 2P", monospace';
+    ctx.fillText(won?'GRACEFULLY DANCED':'A CLUMSY TURN', CANVAS_SIZE/2, CANVAS_SIZE/2-16);
+    ctx.fillStyle='#cfc4a8'; ctx.font='6px "Press Start 2P", monospace';
+    ctx.fillText(d.hits + ' figures kept, best run of ' + d.bestCombo, CANVAS_SIZE/2, CANVAS_SIZE/2+6);
+    ctx.fillStyle='#bcae8a';
+    ctx.fillText('But the evening was spent in their company.', CANVAS_SIZE/2, CANVAS_SIZE/2+24);
+    ctx.fillStyle='#fff4d0'; ctx.font='7px "Press Start 2P", monospace';
+    ctx.fillText('SPACE to leave the floor', CANVAS_SIZE/2, CANVAS_SIZE/2+44);
   }
   ctx.textAlign = 'left';
 }
@@ -2692,12 +2976,40 @@ function drawTile(t, sx, sy, animFrame, season) {
     ctx.fillRect(sx+2, sy, TILE-4, 8);
   }
   if (t === T.THRONE) {
-    // distant dais — the King, glimpsed
+    // the dais — a great gilded throne
     ctx.fillStyle = '#9a2020';
     ctx.fillRect(sx+6, sy+4, TILE-12, TILE-6);
     ctx.fillStyle = '#f0d060';
     ctx.fillRect(sx+10, sy+2, TILE-20, 6);
     ctx.fillRect(sx+TILE/2-2, sy+8, 4, TILE-12);
+  }
+  if (t === T.BALUSTRADE) {
+    // a low gilded rail with balusters
+    ctx.fillStyle = '#8a6a18';
+    ctx.fillRect(sx, sy+TILE-6, TILE, 6);          // base
+    ctx.fillStyle = '#e0b840';
+    ctx.fillRect(sx, sy+6, TILE, 5);               // top rail
+    for (let i = 4; i < TILE; i += 9) {            // balusters
+      ctx.fillStyle = '#d0a830';
+      ctx.fillRect(sx+i, sy+11, 4, TILE-17);
+    }
+  }
+  if (t === T.DANCE_FLOOR) {
+    // polished inlaid parquet — diamond marquetry
+    ctx.strokeStyle = 'rgba(120,80,20,0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(sx+TILE/2, sy); ctx.lineTo(sx+TILE, sy+TILE/2);
+    ctx.lineTo(sx+TILE/2, sy+TILE); ctx.lineTo(sx, sy+TILE/2); ctx.closePath();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,240,200,0.18)';
+    ctx.fillRect(sx+TILE/2-2, sy+TILE/2-2, 4, 4);
+    // a chandelier glint, animated
+    if ((animFrame % 2) === 0) {
+      ctx.fillStyle = 'rgba(255,250,210,0.5)';
+      ctx.fillRect(sx+6, sy+6, 2, 2);
+      ctx.fillRect(sx+TILE-8, sy+TILE-8, 2, 2);
+    }
   }
 }
 
@@ -2798,31 +3110,51 @@ function drawCourtier(c, sx, sy, animFrame) {
   ctx.beginPath();
   ctx.ellipse(sx+16, sy+30, 8, 3, 0, 0, Math.PI*2);
   ctx.fill();
-  // Elaborate coat — wider for the high-status
   const grand = c.status >= 60;
-  ctx.fillStyle = col.body;
-  ctx.fillRect(sx+8, sy+14, 16, 16);
-  // lace/gold trim
-  ctx.fillStyle = grand ? '#f0d060' : '#c8c0b0';
-  ctx.fillRect(sx+15, sy+14, 2, 16);
-  ctx.fillStyle = '#f4f0e0';
-  ctx.fillRect(sx+13, sy+15, 6, 3); // cravat
-  // Head
-  ctx.fillStyle = '#e8c090';
-  ctx.fillRect(sx+11, sy+6, 10, 10);
-  // Powdered wig
-  ctx.fillStyle = col.hair;
-  ctx.fillRect(sx+9, sy+3, 14, 8);
-  ctx.fillRect(sx+9, sy+9, 3, 8);   // wig curl L
-  ctx.fillRect(sx+20, sy+9, 3, 8);  // wig curl R
+  if (c.female) {
+    // Wide court gown (a bell-shaped skirt)
+    ctx.fillStyle = col.body;
+    ctx.fillRect(sx+6, sy+22, 20, 10);   // wide skirt base
+    ctx.fillRect(sx+9, sy+14, 14, 10);   // bodice
+    // gown trim / stomacher
+    ctx.fillStyle = grand ? '#f0d060' : '#d8c8b0';
+    ctx.fillRect(sx+15, sy+14, 2, 16);
+    ctx.fillStyle = '#f4f0e0';
+    ctx.fillRect(sx+12, sy+15, 8, 3); // lace bodice
+    // Head
+    ctx.fillStyle = '#e8c090';
+    ctx.fillRect(sx+11, sy+6, 10, 10);
+    // Tall powdered coiffure (fontange)
+    ctx.fillStyle = col.hair;
+    ctx.fillRect(sx+10, sy+1, 12, 9);
+    ctx.fillRect(sx+13, sy-3, 6, 5);   // raised front
+    ctx.fillRect(sx+9, sy+9, 3, 7);    // ringlet L
+    ctx.fillRect(sx+20, sy+9, 3, 7);   // ringlet R
+  } else {
+    // Elaborate coat — wider for the high-status
+    ctx.fillStyle = col.body;
+    ctx.fillRect(sx+8, sy+14, 16, 16);
+    ctx.fillStyle = grand ? '#f0d060' : '#c8c0b0';
+    ctx.fillRect(sx+15, sy+14, 2, 16);
+    ctx.fillStyle = '#f4f0e0';
+    ctx.fillRect(sx+13, sy+15, 6, 3); // cravat
+    // Head
+    ctx.fillStyle = '#e8c090';
+    ctx.fillRect(sx+11, sy+6, 10, 10);
+    // Powdered wig
+    ctx.fillStyle = col.hair;
+    ctx.fillRect(sx+9, sy+3, 14, 8);
+    ctx.fillRect(sx+9, sy+9, 3, 8);   // wig curl L
+    ctx.fillRect(sx+20, sy+9, 3, 8);  // wig curl R
+    // Legs (stockings)
+    ctx.fillStyle = '#e0d8c8';
+    ctx.fillRect(sx+10, sy+28, 5, 6);
+    ctx.fillRect(sx+17, sy+28, 5, 6);
+  }
   // Eyes
   ctx.fillStyle = '#1a1010';
   ctx.fillRect(sx+13, sy+10, 2, 2);
   ctx.fillRect(sx+17, sy+10, 2, 2);
-  // Legs (stockings)
-  ctx.fillStyle = '#e0d8c8';
-  ctx.fillRect(sx+10, sy+28, 5, 6);
-  ctx.fillRect(sx+17, sy+28, 5, 6);
 
   // Status chip floating above
   const s = Math.round(c.status);
@@ -2836,6 +3168,63 @@ function drawCourtier(c, sx, sy, animFrame) {
   ctx.textAlign = 'center';
   ctx.fillText(String(s), sx+16, sy-3);
   ctx.textAlign = 'left';
+}
+
+// The King on his throne, two intimates flanking him, the guard at the threshold.
+function drawThroneScene() {
+  // The King — seated on the throne tiles (11-12, 1)
+  const kx = 11.5 * TILE - cam.x, ky = 1 * TILE - cam.y;
+  if (kx > -TILE && kx < CANVAS_SIZE && ky > -TILE && ky < CANVAS_SIZE) {
+    // robe
+    ctx.fillStyle = '#6a1820';
+    ctx.fillRect(kx-12, ky+6, 24, 24);
+    // ermine trim
+    ctx.fillStyle = '#f0ece0';
+    ctx.fillRect(kx-12, ky+6, 24, 4);
+    // head
+    ctx.fillStyle = '#e8c090';
+    ctx.fillRect(kx-7, ky-4, 14, 12);
+    // great periwig
+    ctx.fillStyle = '#e8e4d8';
+    ctx.fillRect(kx-10, ky-8, 20, 8);
+    ctx.fillRect(kx-11, ky-2, 5, 14);
+    ctx.fillRect(kx+6, ky-2, 5, 14);
+    // crown
+    ctx.fillStyle = '#f0d040';
+    ctx.fillRect(kx-8, ky-12, 16, 5);
+    ctx.fillStyle = '#e84040';
+    ctx.fillRect(kx-2, ky-14, 4, 4);
+    // eyes
+    ctx.fillStyle = '#1a1010';
+    ctx.fillRect(kx-4, ky+1, 2, 2); ctx.fillRect(kx+2, ky+1, 2, 2);
+  }
+  // Intimates flanking the dais
+  for (const m of kingsIntimates) {
+    const sx = m.tx*TILE - cam.x, sy = m.ty*TILE - cam.y;
+    if (sx > -TILE && sx < CANVAS_SIZE && sy > -TILE && sy < CANVAS_SIZE) {
+      ctx.fillStyle = m.color.body; ctx.fillRect(sx+10, sy+12, 12, 16);
+      ctx.fillStyle = '#e8c090'; ctx.fillRect(sx+11, sy+4, 10, 10);
+      ctx.fillStyle = m.color.hair; ctx.fillRect(sx+9, sy+2, 14, 7); // wig
+      ctx.fillStyle = '#1a1010'; ctx.fillRect(sx+13, sy+8, 2, 2); ctx.fillRect(sx+17, sy+8, 2, 2);
+    }
+  }
+  // The guard of the chamber
+  const gx = kingsGuard.courtTx*TILE - cam.x, gy = kingsGuard.courtTy*TILE - cam.y;
+  if (gx > -TILE && gx < CANVAS_SIZE && gy > -TILE && gy < CANVAS_SIZE) {
+    drawNpc(kingsGuard, gx, gy, state.animFrame);
+    // halberd
+    ctx.strokeStyle = '#6a4a20'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(gx+24, gy+4); ctx.lineTo(gx+24, gy+34); ctx.stroke();
+    ctx.fillStyle = '#c8c8d0'; ctx.beginPath();
+    ctx.moveTo(gx+24, gy+2); ctx.lineTo(gx+30, gy+8); ctx.lineTo(gx+24, gy+12); ctx.closePath(); ctx.fill();
+    // prompt when near and not yet admitted
+    const near = Math.hypot(player.x - kingsGuard.courtTx*TILE, player.y - kingsGuard.courtTy*TILE) < TILE*1.9;
+    if (near) {
+      ctx.fillStyle = state.courtStatus >= WIN_STATUS ? '#80e060' : 'rgba(255,255,150,0.85)';
+      ctx.font = '10px monospace'; ctx.textAlign = 'center';
+      ctx.fillText('▲', gx+16, gy-6); ctx.textAlign = 'left';
+    }
+  }
 }
 
 // ---- Court renderer ----
@@ -2853,6 +3242,9 @@ function renderCourt(dt) {
       drawTile(t, offX + tx*TILE, offY + ty*TILE, state.animFrame, 0);
     }
   }
+
+  // The King, his intimates, and the guard of the chamber
+  drawThroneScene();
 
   // Courtiers
   for (let c of courtiers) {
@@ -3295,6 +3687,12 @@ function update(dt) {
     return;
   }
 
+  // Court ball takes over input while it runs
+  if (state.dance) {
+    updateDance(dt);
+    return;
+  }
+
   // Court day summary waits for SPACE/interact
   if (state.courtDaySummary) {
     if (interactPressed) {
@@ -3410,9 +3808,12 @@ function update(dt) {
   if (interactPressed) {
     interactPressed = false;
     if (atCourt) {
-      // The attendant takes priority if you are standing with him
       let handled = false;
-      if (intendantNpc.active) {
+      // The guard of the King's chamber, before the dais
+      const dgd = Math.hypot(player.x - kingsGuard.courtTx*TILE, player.y - kingsGuard.courtTy*TILE);
+      if (dgd < TILE * 1.9) { talkToKingsGuard(); handled = true; }
+      // The attendant takes priority if you are standing with him
+      if (!handled && intendantNpc.active) {
         const da = Math.hypot(player.x - intendantNpc.courtTx*TILE, player.y - intendantNpc.courtTy*TILE);
         if (da < TILE * 2.0) { talkToAttendant(); handled = true; }
       }
@@ -3482,6 +3883,8 @@ function gameLoop(ts) {
       renderCroquet();
     } else if (state.shoot) {
       renderShoot();
+    } else if (state.dance) {
+      renderDance();
     } else if (state.courtDaySummary) {
       renderCourtSummary();
     } else if (state.currentWorld === 'court') {
@@ -3513,6 +3916,8 @@ function startGame() {
 
 function resetGame() {
   document.getElementById('gameover-screen').style.display = 'none';
+  const ws = document.getElementById('win-screen'); if (ws) ws.style.display = 'none';
+  state.gameWon = false;
   state.day=1; state.season=0; state.money=30; state.trust=70; state.estate=60;
   state.brokedays=0; state.npcsSpokenToday=new Set(); state.dayTimer=0;
   state.activeRequests=[]; state.completedRequests=new Set(); state.npcFlags={};
@@ -3522,7 +3927,7 @@ function resetGame() {
   state.messengerArrived=false; state.summonsAccepted=false;
   state.daysAwayFromFief=0; state.courtDaysSpent=0; state.blocksUsedToday=0;
   state.intendantInstalled=false; state.intendantMet=false;
-  state.courtDaySummary=null; state.travelScreen=null; state.croquet=null; state.shoot=null;
+  state.courtDaySummary=null; state.travelScreen=null; state.croquet=null; state.shoot=null; state.dance=null;
   state.attendantLog=[]; state.pendingAttendantReport=false;
   for (let npc of npcs) {
     npc.met=false; npc.requestId=null; npc.lastResolved=null;

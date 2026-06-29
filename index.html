@@ -2604,13 +2604,19 @@ function arriveAtFief() {
   showPopup(speaker.name, line, ()=>{ checkGameOver(); });
 }
 
+// Trust bleeds faster the longer you are gone — a lord unseen is a lord
+// resented. The drain mounts with every day of absence.
+function awayTrustLoss() {
+  return 4 + Math.floor(state.daysAwayFromFief / 3);
+}
+
 // Apply the fief's background simulation for n days passing while you are away
 function applyFiefSimDays(n) {
   for (let i = 0; i < n; i++) {
     const income = Math.floor(state.estate / 10);
     state.money += income;
     state.estate = Math.max(0, state.estate - 2);
-    state.trust  = Math.max(0, state.trust - 1);
+    state.trust  = Math.max(0, state.trust - awayTrustLoss());
     if (state.intendantInstalled) {
       state.estate = Math.min(100, state.estate + 1);
       state.money += 2;
@@ -2634,7 +2640,7 @@ function endCourtDay() {
   const estateBefore = state.estate, trustBefore = state.trust, moneyBefore = state.money;
   state.money  += fiefIncome;
   state.estate  = Math.max(0, state.estate - 2);
-  state.trust   = Math.max(0, state.trust - 1);
+  state.trust   = Math.max(0, state.trust - awayTrustLoss());
 
   // The Intendant takes a decision in your absence — trust down, output up
   let decision = null;
@@ -3585,19 +3591,22 @@ function drawRequestPointers() {
     const ty = npc.ty*TILE + TILE/2 - cam.y;
     const onScreen = tx > 0 && tx < CANVAS_SIZE && ty > 0 && ty < CANVAS_SIZE;
     if (onScreen) {
-      // On-screen: a red arrow bobs directly above their head, pointing down
-      const hy2 = npc.ty*TILE - cam.y - 16 - bob;
-      ctx.save();
-      ctx.translate(npc.tx*TILE + TILE/2 - cam.x, hy2);
-      ctx.rotate(Math.PI/2); // point downward
+      // On-screen: a bold red arrow bobs above their head, pointing down at them.
+      const hx2 = npc.tx*TILE + TILE/2 - cam.x;
+      const hy2 = npc.ty*TILE - cam.y - 22 - bob*1.4;
       ctx.fillStyle = '#e83020';
-      ctx.strokeStyle = '#3a0808';
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(10, 0); ctx.lineTo(-7, -8); ctx.lineTo(-1, 0); ctx.lineTo(-7, 8);
+      ctx.moveTo(hx2,     hy2 + 16);   // tip, pointing down
+      ctx.lineTo(hx2 - 10, hy2 + 1);
+      ctx.lineTo(hx2 - 4,  hy2 + 1);
+      ctx.lineTo(hx2 - 4,  hy2 - 9);
+      ctx.lineTo(hx2 + 4,  hy2 - 9);
+      ctx.lineTo(hx2 + 4,  hy2 + 1);
+      ctx.lineTo(hx2 + 10, hy2 + 1);
       ctx.closePath();
       ctx.fill(); ctx.stroke();
-      ctx.restore();
       continue;
     }
     const ang = Math.atan2(ty - cy, tx - cx);
